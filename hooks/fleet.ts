@@ -21,39 +21,118 @@ export type Boat = {
   gone: number | undefined
 }
 
-// The ellipse of open water a boat circles while its work runs.
+// The water a boat keeps to while its work runs. The lead boat circles a
+// flat ellipse. A dinghy or a fishing boat roams a wide stretch: it sweeps
+// from side to side across it, coming about at each end, and drifts between
+// the far and the near side of it on a longer, unrelated beat, so its course
+// does not visibly repeat. A boat whose water reaches out to sea comes in
+// from the horizon and goes back out to it; the rest come and go by the
+// edges of the view.
 export type Route = {
   cx: number
   cy: number
   rx: number
   ry: number
-  // One lap of the circuit.
+  // One sweep there and back.
   seconds: number
+  // One drift out and back; none for an ellipse.
+  drift: number | undefined
+  // Where in its drift a boat starts, as a share of it.
+  driftFrom: number
+  // Its size at the middle of its water.
   scale: number
+  isFar: boolean
 }
 
+// Whatever floats on the sea looks smaller the nearer it is to the horizon.
+// The scene is drawn with a gentle perspective (the water villas far out
+// stand nearly as large as the island), so a boat shrinks with the square
+// root of how far below the horizon it sits rather than in proportion: far
+// out it is still plain to see, and only at the horizon itself does it
+// dwindle to nothing. NEAR_Y is the depth at which a boat shows at its own
+// size.
+export const HORIZON_Y = 430
+const NEAR_Y = 745
+export function depthScale(y: number): number {
+  return Math.sqrt(Math.max(0, (y - HORIZON_Y) / (NEAR_Y - HORIZON_Y)))
+}
+
+// How big each kind of boat is at NEAR_Y.
+const SIZE: Record<BoatKind, number> = { lead: 1.4, crew: 0.65, shell: 0.66 }
+
+function sizeAt(kind: BoatKind, y: number): number {
+  return Math.round(SIZE[kind] * depthScale(y) * 1000) / 1000
+}
+
+function ellipse(kind: BoatKind, cx: number, cy: number, rx: number, ry: number, seconds: number): Route {
+  return { cx, cy, rx, ry, seconds, drift: undefined, driftFrom: 0, scale: sizeAt(kind, cy), isFar: false }
+}
+
+// Water from `left` to `right` and from `far` to `near`, swept in `seconds`
+// and drifted across in `drift`.
+function roam(kind: BoatKind, [left, right]: [number, number], [far, near]: [number, number], seconds: number, drift: number, driftFrom: number): Route {
+  const cy = (far + near) / 2
+  return { cx: (left + right) / 2, cy, rx: (right - left) / 2, ry: (near - far) / 2, seconds, drift, driftFrom, scale: sizeAt(kind, cy), isFar: far < 600 }
+}
+
+// A boat's size where it is on its water. On a roam the scene sizes it on a
+// straight line between its sizes at the far and the near side, which is
+// within a few hundredths of its size by depth.
+export function sizeOn(boat: Boat, y: number): number {
+  const r = routeOf(boat)
+  if (r.drift === undefined) {
+    return r.scale
+  }
+  const [far, near] = [sizeAt(boat.kind, r.cy - r.ry), sizeAt(boat.kind, r.cy + r.ry)]
+  return far + ((near - far) * (y - (r.cy - r.ry))) / (2 * r.ry || 1)
+}
+
+// The ends of a roam's sizes, far side first.
+export function sizesOf(boat: Boat): [number, number] {
+  const r = routeOf(boat)
+  return [sizeAt(boat.kind, r.cy - r.ry), sizeAt(boat.kind, r.cy + r.ry)]
+}
+
+// The water of each kind's boats. Behind the water villas, left of x 640, a
+// boat would sail through the pier, so the water there starts nearer; by the
+// island, right of x 1090, only the water in front of the island is open.
+// The sweeps and drifts take lengths with no common beat.
 export const ROUTES: Record<BoatKind, readonly Route[]> = {
-  lead: [
-    { cx: 690, cy: 745, rx: 150, ry: 8, seconds: 100, scale: 1.4 },
-    { cx: 680, cy: 760, rx: 140, ry: 7, seconds: 92, scale: 1.4 },
-  ],
-  // The dinghies keep to the water the lead boat's sails do not hide: far off
-  // to either side of its circuit, or nearer than it.
+  lead: [ellipse('lead', 690, 745, 150, 8, 100), ellipse('lead', 680, 760, 140, 7, 92)],
   crew: [
-    { cx: 430, cy: 664, rx: 100, ry: 7, seconds: 66, scale: 0.6 },
-    { cx: 850, cy: 802, rx: 110, ry: 7, seconds: 74, scale: 0.7 },
-    { cx: 990, cy: 640, rx: 45, ry: 5, seconds: 58, scale: 0.58 },
-    { cx: 560, cy: 814, rx: 80, ry: 6, seconds: 62, scale: 0.7 },
-    { cx: 1000, cy: 792, rx: 55, ry: 5, seconds: 54, scale: 0.72 },
+    roam('crew', [170, 610], [660, 860], 86, 137, 0.1),
+    roam('crew', [670, 1050], [545, 800], 94, 151, 0),
+    roam('crew', [740, 1480], [800, 880], 118, 97, 0.6),
+    roam('crew', [660, 1060], [560, 720], 82, 129, 0.35),
+    roam('crew', [300, 990], [700, 880], 106, 163, 0.8),
   ],
   shell: [
-    { cx: 1150, cy: 840, rx: 120, ry: 8, seconds: 80, scale: 0.75 },
-    { cx: 1235, cy: 812, rx: 55, ry: 5, seconds: 64, scale: 0.7 },
-    { cx: 700, cy: 874, rx: 100, ry: 7, seconds: 86, scale: 0.78 },
-    { cx: 1110, cy: 878, rx: 110, ry: 6, seconds: 72, scale: 0.82 },
-    { cx: 950, cy: 864, rx: 130, ry: 8, seconds: 92, scale: 0.8 },
+    roam('shell', [1150, 1520], [805, 882], 98, 121, 0.3),
+    roam('shell', [670, 1050], [560, 760], 102, 143, 0.55),
+    roam('shell', [140, 620], [690, 880], 114, 131, 0.9),
+    roam('shell', [700, 1050], [545, 680], 90, 117, 0.15),
+    roam('shell', [560, 1300], [820, 885], 124, 109, 0.45),
   ],
 }
+
+// Where a far circuit's boat comes up over the horizon, and goes down below
+// it again: a little off to one side of its circuit.
+function horizonOf(boat: Boat, side: Side): Point {
+  const r = routeOf(boat)
+  return { x: r.cx + (side === 'L' ? -60 : 60), y: HORIZON_Y + 6 }
+}
+
+// A straight course on the water is a straight line on the screen. Paced
+// evenly on the water, a boat would leave its circuit in a rush and spend the
+// rest of its way a speck crawling at the horizon; paced on the screen, slow
+// at the horizon and slow at the circuit, it is seen to come up out of the
+// distance and to sink back into it.
+function along(a: Point, b: Point, p: number): Point {
+  const s = eased(HORIZON_EASE, p)
+  return { x: a.x + (b.x - a.x) * s, y: a.y + (b.y - a.y) * s }
+}
+const HORIZON_EASE: Curve = [0.5, 0, 0.4, 1]
+const HORIZON_S = 16
 
 const KINDS: readonly BoatKind[] = ['lead', 'crew', 'shell']
 
@@ -116,7 +195,11 @@ export function muster(fleet: readonly Boat[], wanted: Record<BoatKind, number>,
     next = next.map(boat => (recalled.includes(boat) ? { ...boat, gone: now } : boat))
     for (let count = out.length; count < want; count++) {
       const taken = next.filter(boat => boat.kind === kind).map(boat => boat.slot)
-      let slot = [...Array(routes).keys()].find(i => !taken.includes(i))
+      // A dinghy or fishing boat takes any free circuit, near or far, so even
+      // a lone one is as likely to head out to sea as to keep inshore.
+      const free = [...Array(routes).keys()].filter(i => !taken.includes(i))
+      const pick = kind === 'lead' ? 0 : Math.floor(chance((now % 1000003) / 1000 + count * 5.27 + KINDS.indexOf(kind) * 2.39) * free.length)
+      let slot = free[pick]
       if (slot === undefined) {
         // Every circuit still has a boat sailing off it: the one furthest gone gives its up.
         const leaving = next.filter(boat => boat.kind === kind && boat.gone !== undefined)
@@ -173,6 +256,13 @@ export function lapAt(boat: Boat, age: number): Fix {
   const lap = (((age + lapStart(boat)) / route.seconds) % 1 + 1) % 1
   const ease = (p: number): number => eased(EASE_IN_OUT, p)
   const dx = lap < 0.5 ? -1 + 2 * ease(lap / 0.5) : 1 - 2 * ease((lap - 0.5) / 0.5)
+  if (route.drift !== undefined) {
+    // Its drift mirrors the scene's `oy2`: from the far side to the near and
+    // back, eased at each.
+    const d = ((((age + lapStart(boat)) / route.drift + route.driftFrom) % 1) + 1) % 1
+    const dy = d < 0.5 ? -1 + 2 * ease(d / 0.5) : 1 - 2 * ease((d - 0.5) / 0.5)
+    return { x: route.cx + route.rx * dx, y: route.cy + route.ry * dy, heading: lap < 0.5 ? 1 : -1 }
+  }
   const dy = lap < 0.25 ? -ease(lap / 0.25) : lap < 0.75 ? -1 + 2 * ease((lap - 0.25) / 0.5) : 1 - ease((lap - 0.75) / 0.25)
   return { x: route.cx + route.rx * dx, y: route.cy + route.ry * dy, heading: lap < 0.5 ? 1 : -1 }
 }
@@ -249,6 +339,9 @@ function paced(distance: number, speed: number, longest: number): number {
 // How long a boat's way in takes. It joins its circuit where that has got to
 // by then.
 export function enterSeconds(boat: Boat): number {
+  if (routeOf(boat).isFar) {
+    return HORIZON_S
+  }
   const edge = boat.from === 'L' ? -OFF : VIEW_W + OFF
   return paced(edge - lapAt(boat, ENTER_S).x, 45, ENTER_S)
 }
@@ -262,6 +355,9 @@ export function fixAt(boat: Boat, age: number): Fix {
     return lap
   }
   const join = lapAt(boat, seconds)
+  if (routeOf(boat).isFar) {
+    return { ...along(horizonOf(boat, boat.from), join, age / seconds), heading: lap.heading }
+  }
   const course = courseTo(boat, join, boat.from)
   const gate = gateOf(course, boat.from)
   const x = gate.x + (join.x - gate.x) * eased(ENTER_X, age / seconds)
@@ -278,13 +374,35 @@ function leaving(boat: Boat, gone: number): { from: Fix; side: Side; course: Poi
 }
 
 export function leaveSeconds(boat: Boat): number {
+  if (routeOf(boat).isFar) {
+    return HORIZON_S
+  }
   return boat.gone === undefined ? LEAVE_S : leaving(boat, boat.gone).seconds
+}
+
+// Whether a boat comes and goes by the horizon.
+export function isFarOut(boat: Boat): boolean {
+  return routeOf(boat).isFar
+}
+
+// How far ahead a scene works out the order of roaming boats in depth. It is
+// drawn again once that time is up.
+export const ROAM_S = 45
+
+// Whether a boat roams, and so keeps changing places in depth with others.
+export function roams(boat: Boat): boolean {
+  return routeOf(boat).drift !== undefined
 }
 
 // A boat's place at clock time `now` (ms), called home or not.
 export function whereabouts(boat: Boat, now: number): Fix {
   if (boat.gone === undefined) {
     return fixAt(boat, (now - boat.born) / 1000)
+  }
+  if (routeOf(boat).isFar) {
+    const from = fixAt(boat, (boat.gone - boat.born) / 1000)
+    const side: Side = boat.from === 'L' ? 'R' : 'L'
+    return { ...along(from, horizonOf(boat, side), (now - boat.gone) / 1000 / HORIZON_S), heading: side === 'L' ? -1 : 1 }
   }
   const { from, side, course, seconds } = leaving(boat, boat.gone)
   const x = from.x + (gateOf(course, side).x - from.x) * eased(LEAVE_X, (now - boat.gone) / 1000 / seconds)
@@ -294,7 +412,7 @@ export function whereabouts(boat: Boat, now: number): Fix {
 // Whether a boat rounds the island behind it, on its way in or on its way out,
 // and so is drawn behind the island.
 export function sailsBehind(boat: Boat): boolean {
-  if (boat.kind === 'shell') {
+  if (boat.kind === 'shell' || routeOf(boat).isFar) {
     return false
   }
   if (boat.from === 'R') {

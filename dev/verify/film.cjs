@@ -64,16 +64,38 @@ function probe({ clay, hull }) {
     }
   }
   const clawds = figures.map(f => ({ x: f.l, y: f.t, w: f.r - f.l, h: f.b - f.t, order: f.order, o: f.o }))
+  // Each boat's side view: the lead boat's hull is drawn inline, the fleet's
+  // are clones of the defs. `water` is where its deck line meets the water,
+  // which says how near it is.
   const boats = [...document.querySelectorAll('g.boat')]
+    .filter(el => el.querySelector(`path[fill="${hull}"], use[href="#cH"], use[href="#sH"]`) !== null)
     .map(el => {
       const o = seen(el)
-      const r = el.getBoundingClientRect()
+      // Only what shows: a glow kept hidden or a wake faded out still has a
+      // box, which would make the boat seem wider than it is.
+      const shown = [...el.querySelectorAll('path, ellipse, circle, rect, line, polygon, use')].filter(leaf => seen(leaf) > 0.05).map(leaf => leaf.getBoundingClientRect()).filter(q => q.width + q.height > 0)
+      const r = shown.length === 0 ? el.getBoundingClientRect() : { left: Math.min(...shown.map(q => q.left)), top: Math.min(...shown.map(q => q.top)), right: Math.max(...shown.map(q => q.right)), bottom: Math.max(...shown.map(q => q.bottom)) }
+      r.width = r.right - r.left
+      r.height = r.bottom - r.top
       const isLead = el.querySelector(`path[fill="${hull}"]`) !== null
       const last = [...el.querySelectorAll('*')].reduce((m, c) => Math.max(m, order.get(c) ?? 0), order.get(el))
-      return { ...box(r), o, isLead, first: order.get(el), last }
+      const kind = isLead ? 'lead' : el.querySelector('use[href="#cH"]') ? 'crew' : 'shell'
+      // The lead boat's hull alone, for following it: its glows and wake come
+      // and go, and would read as jumps.
+      const core = isLead ? box(el.querySelector(`path[fill="${hull}"]`).getBoundingClientRect()) : undefined
+      return { ...box(r), o, isLead, kind, water: el.getScreenCTM().f, first: order.get(el), last, isShown: onScreen(r), core }
     })
-    .filter(b => b.o > 0.05 && onScreen(b))
-  return { clawds, boats }
+    .filter(b => b.o > 0.05 && b.isShown)
+  // Each fleet boat's hull, wake left out, by name, wherever it is drawn and
+  // whether or not this copy of it is the one shown: every copy stands in the
+  // same place.
+  const fleet = {}
+  for (const el of document.querySelectorAll('g[data-b]')) {
+    const hull = el.querySelector('use[href="#cH"], use[href="#sH"]')
+    const r = hull?.getBoundingClientRect()
+    if (r && onScreen(r)) fleet[el.getAttribute('data-b')] ??= box(r)
+  }
+  return { clawds, boats, fleet }
 }
 
 function seekAll(page, ms) {
@@ -100,9 +122,24 @@ function frameFaults(p) {
     const isAshore = bottom >= 708 && bottom <= 750 && c.x + c.w / 2 >= 1120
     if (!isAshore) continue
     for (const b of p.boats) {
-      const overlaps = c.x < b.x + b.w && c.x + c.w > b.x && c.y < b.y + b.h && c.y + c.h > b.y
+      // Only its hull, from a little above the waterline down, can stand in
+      // front of the mascot; its sails rise behind whatever it is beside.
+      const top = Math.max(b.y, b.water - 8)
+      const overlaps = c.x < b.x + b.w && c.x + c.w > b.x && c.y < b.y + b.h && c.y + c.h > top
       if (overlaps && b.y + b.h > bottom + 6 && c.order > b.last) {
         faults.push(`clawd ashore painted over a ${b.isLead ? 'lead ' : ''}boat in front of it`)
+      }
+    }
+  }
+  // Boats that overlap: the nearer one must be painted over the farther.
+  for (const a of p.boats) {
+    for (const b of p.boats) {
+      const across = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)
+      const down = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)
+      // Boats within a few px of one depth may be painted either way.
+      const isNearer = a.water > b.water + 6
+      if (isNearer && a.w > 0.5 && b.w > 0.5 && across > 0.25 * Math.min(a.w, b.w) && down > 0.25 * Math.min(a.h, b.h) && a.last < b.first) {
+        faults.push(`${a.kind} boat at y=${f1(a.water)} painted under a farther ${b.kind} boat at y=${f1(b.water)}`)
       }
     }
   }
@@ -124,14 +161,25 @@ function stepFaults(a, b, dt) {
     const grew = Math.abs(p.h - q.h)
     if (dt === 0 ? reshaped > 8 : grew > 60 * dt + 6) faults.push(`clawd changed shape by ${f1(dt === 0 ? reshaped : grew)}px at once`)
   }
+  for (const name of Object.keys(a.fleet ?? {})) {
+    const [p, q] = [a.fleet[name], b.fleet?.[name]]
+    if (q === undefined) continue
+    const moved = gap(p, q)
+    if (moved > TOP_SPEED * dt + 6) faults.push(`${name} boat jumped ${f1(moved)}px`)
+    const narrowed = Math.abs(p.w - q.w)
+    if (narrowed > 600 * dt + 8) faults.push(`${name} boat changed width by ${f1(narrowed)}px at once`)
+  }
   const leads = [a, b].map(p => p.boats.filter(x => x.isLead))
   if (leads[0].length === 1 && leads[1].length === 1) {
-    const [p, q] = [leads[0][0], leads[1][0]]
+    const [p, q] = [leads[0][0].core, leads[1][0].core]
     const moved = gap(p, q)
     if (moved > TOP_SPEED * dt + 6) faults.push(`lead boat jumped ${f1(moved)}px`)
-    // A boat comes about over a second or so: its width runs down and back.
+    // A boat comes about in under a second, its side view narrowing to
+    // nothing as its bow-on view (drawn apart, so not measured here) widens:
+    // within a scene only a change faster than that is a fault, and across a
+    // seam any change is.
     const narrowed = Math.abs(p.w - q.w)
-    if (narrowed > 150 * dt + 8) faults.push(`lead boat changed width by ${f1(narrowed)}px at once`)
+    if (narrowed > 600 * dt + 8) faults.push(`lead boat changed width by ${f1(narrowed)}px at once`)
   } else if (leads[0].length !== leads[1].length) {
     const one = (leads[0][0] ?? leads[1][0])
     const cx = one.x + one.w / 2
@@ -150,6 +198,19 @@ function stepFaults(a, b, dt) {
     if (loaded === i) return
     const svg = fs.readFileSync(path.join(dir, story.redraws[i].file), 'utf8').replace('<svg ', `<svg width="${W}" height="${H}" `)
     await page.setContent(`<html><body style="margin:0;overflow:hidden">${svg}</body></html>`)
+    // A boat drawn more than once is drawn by <use> copies. The animations
+    // inside a copy's shadow tree are not the document's, so they cannot be
+    // seeked, and nothing in a copy can be measured: each copy of a boat is
+    // swapped for a plain clone of it, which draws the same.
+    await page.evaluate(() => {
+      for (const use of [...document.querySelectorAll('use')]) {
+        const id = (use.getAttribute('href') ?? '').slice(1)
+        if (!/^v\d+$/.test(id)) continue
+        const clone = document.getElementById(id).cloneNode(true)
+        clone.removeAttribute('id')
+        use.replaceWith(clone)
+      }
+    })
     loaded = i
   }
   const at = async (i, seconds) => {
@@ -220,7 +281,9 @@ function stepFaults(a, b, dt) {
   }
 
   if (isFilm) {
-    const files = fs.readdirSync(shots).filter(n => /^t\d/.test(n)).sort()
+    const every = fs.readdirSync(shots).filter(n => /^t\d/.test(n)).sort()
+    // A long film is sampled evenly: one page cannot hold every frame.
+    const files = every.filter((_, i) => i % Math.ceil(every.length / 72) === 0)
     const cells = files.map(n => `<figure><img src="data:image/png;base64,${fs.readFileSync(path.join(shots, n)).toString('base64')}"><figcaption>${n.slice(1, -4).replace(/^0+(?=\d)/, '')}s</figcaption></figure>`).join('')
     const sheet = await context.newPage()
     await sheet.setViewportSize({ width: 1600, height: 900 })

@@ -1,9 +1,9 @@
 // The Maldives lagoon backdrop: one SVG whose layers follow the agent's mood.
 
 import type { Mood, Need } from '../types'
-import { ENTER_X, LEAVE_X, enterSeconds, fixAt, lapAt, lapStart, leaveSeconds, routeOf, sailsBehind, whereabouts } from './fleet'
+import { ENTER_X, HORIZON_Y, LEAVE_X, ROAM_S, depthScale, enterSeconds, fixAt, lapAt, lapStart, leaveSeconds, roams, routeOf, sailsBehind, sizeOn, sizesOf, whereabouts } from './fleet'
 import type { Boat, Point } from './fleet'
-import { BAR, BEACH_TIP, CIRCUIT_START, DOCK, FIRE, HOME, ISLE, JETTY, LOUNGER, along, dayOf, facingAt, isByLounger, lifeAt, lyingIn, planOf, scatter, turns } from './voyage'
+import { BAR, BEACH_TIP, CIRCUIT_START, DOCK, circuitAt, FIRE, HOME, ISLE, JETTY, LAP_FACING, LOUNGER, along, dayOf, facingAt, isByLounger, lifeAt, lyingIn, planOf, scatter, turns } from './voyage'
 import type { Day, Doing, Leg, Voyage } from './voyage'
 
 const W = 1600
@@ -45,6 +45,11 @@ function rnd(i: number, salt: number): number {
   return v - Math.floor(v)
 }
 
+// Three decimals, for scales.
+function f3(n: number): string {
+  return String(Math.round(n * 1000) / 1000)
+}
+
 function f(n: number): string {
   return String(Math.round(n * 10) / 10)
 }
@@ -60,10 +65,12 @@ const STYLE = `
 .gcol{fill:#fffadf}
 .far{fill:#3f8f7a}.farsand{fill:#f1e6c8}
 .wall{fill:#b7875a}.wallshade{fill:#946a43}.deck{fill:#8a6440}.post{stroke:#6b4c2f}
-.trunk{fill:#9a7650}.ring{stroke:#7d5d3c}
+.trunk{fill:#9a7650}.bark{fill:#82623f}.ring{stroke:#7d5d3c;fill:none}.sh{fill:#6b5326;opacity:.18}
 .fa{fill:#2c8a4f}.fb{fill:#3aa35f}.fc{fill:#24733f}.rib{stroke:#1d5e33}
-.bush{fill:#2f8a4f}.bush2{fill:#3fa35e}
-.foam{stroke:#ffffff}.wet{fill:#d8c595}
+.bush{fill:#2f8a4f}.bush2{fill:#3fa35e}.leaf{stroke:#2f8a4f;stroke-width:2.2;stroke-linecap:round}.flw{fill:#ff6f91}.flc{fill:#ffe08a}
+.grass{fill:none;stroke:#5f9e47;stroke-width:1.5;stroke-linecap:round}.grain{fill:#a88a52}.shoal{fill:#a6f3e4}
+.crb{fill:#e8603c}.crl{stroke:#b8432a;stroke-width:1.3;stroke-linecap:round;fill:none}
+.foam{stroke:#ffffff}.wet{fill:#d2bd8a}
 .crest{fill:#ffffff}
 .glint{fill:#ffffff}
 .gull{stroke:#2a3c46}
@@ -92,10 +99,12 @@ const STYLE = `
   .sun,.sunglow{opacity:0}.moon,.stars,.moonglow,.navlamp{opacity:1}
   .far{fill:#16362f}.farsand{fill:#6b6350}
   .wall{fill:#5e4630}.wallshade{fill:#4a3624}.deck{fill:#47341f}
-  .trunk{fill:#5a4630}
+  .trunk{fill:#5a4630}.bark{fill:#4a3926}.sh{fill:#000}
   .fa{fill:#173f2a}.fb{fill:#1e4d33}.fc{fill:#123321}.rib{stroke:#0c2618}
-  .bush{fill:#173f2a}.bush2{fill:#1e4d33}
-  .foam{stroke:#9fc4cc}.wet{fill:#6e6650}
+  .bush{fill:#173f2a}.bush2{fill:#1e4d33}.leaf{stroke:#173f2a}.flw{fill:#8a4a5c}.flc{fill:#9c8a5a}
+  .grass{stroke:#2d4d2a}.grain{fill:#4f4636}.shoal{fill:#2f7f7a}
+  .crb{fill:#93442f}.crl{stroke:#6e3424}
+  .foam{stroke:#9fc4cc}.wet{fill:#655d48}
   .wvs{opacity:.45}
   .glint{fill:#dfe9ff}
   .gull{stroke:#9fb7cc}
@@ -154,7 +163,12 @@ const STYLE = `
 @keyframes pod{0%,33.2%{opacity:1}33.4%,100%{opacity:0}}
 @keyframes ox{0%,100%{transform:translateX(calc(var(--r) * -1))}50%{transform:translateX(var(--r))}}
 @keyframes oy{0%,100%{transform:translateY(0)}25%{transform:translateY(calc(var(--q) * -1))}75%{transform:translateY(var(--q))}}
-@keyframes of{0%,100%{transform:scaleX(0)}4%,46%{transform:scaleX(1)}50%{transform:scaleX(0)}54%,96%{transform:scaleX(-1)}}
+@keyframes oy2{0%,100%{transform:translateY(calc(var(--q) * -1))}50%{transform:translateY(var(--q))}}
+@keyframes oz{0%,100%{transform:scale(var(--z0))}50%{transform:scale(var(--z1))}}
+@keyframes of{0%,100%{transform:scaleX(0)}1.5%,48.5%{transform:scaleX(1)}50%{transform:scaleX(0)}51.5%,98.5%{transform:scaleX(-1)}}
+@keyframes ob{0%,50%,100%{transform:scaleX(1)}1.5%,48.5%,51.5%,98.5%{transform:scaleX(0)}}
+@keyframes or{0%,50%,100%{transform:translateX(0)}1.5%,48.5%{transform:translateX(-20px)}51.5%,98.5%{transform:translateX(20px)}}
+@keyframes turnb{0%,100%{transform:scaleX(0)}50%{transform:scaleX(1)}}
 @keyframes wfade{0%,60%{transform:scaleX(1);opacity:1}100%{transform:scaleX(.2);opacity:0}}
 @keyframes wflow{to{stroke-dashoffset:-19}}
 @keyframes grass{0%,100%{transform:rotate(-7deg)}50%{transform:rotate(7deg)}}
@@ -179,7 +193,7 @@ const STYLE = `
 .drift2{${loop('drift', 340, 'steps(1700)')}}
 .wv{${loop('wv', 24, 'linear')}}
 .swell{${loop('swell', 6, 'ease-in-out')}}
-.gl{${loop('shimmer', 3.4, 'ease-in-out')}}
+.gcol>*{${loop('shimmer', 3.4, 'ease-in-out')}}
 .spark{transform-box:fill-box;transform-origin:center;${loop('sparkle', 5, 'ease-in-out')}}
 .palm{transform-box:view-box;${loop('sway', 7, 'ease-in-out')}}
 .gulls{${loop('fly', 58, 'linear')}}
@@ -188,16 +202,21 @@ const STYLE = `
 .shoot{${loop('shoot', 46, 'linear')}}
 .bx{animation:ox var(--u) ease-in-out calc(var(--b,0) * -1s) infinite}
 .by{animation:oy var(--u) ease-in-out calc(var(--b,0) * -1s) infinite}
+.bv{animation:oy2 var(--v) ease-in-out calc(var(--c,0) * -1s) infinite}
+.bz{animation:oz var(--v) ease-in-out calc(var(--c,0) * -1s) infinite}
 .bf{animation:of var(--u) linear calc(var(--b,0) * -1s) infinite}
+.bw{animation:ob var(--u) linear calc(var(--b,0) * -1s) infinite}
+.br{animation:or var(--u) linear calc(var(--b,0) * -1s) infinite}
 .way,.cut{animation-duration:var(--e);animation-timing-function:linear;animation-delay:calc(var(--a,0) * -1s);animation-iteration-count:1;animation-fill-mode:both}
 .cut{animation-timing-function:step-end}
-.turn{animation:turn 1.6s ease-in-out calc(var(--a,0) * -1s) 1 both}
-.hS{transform-box:fill-box;transform-origin:left center;animation:hoistS ${HOIST}}
+.turn{animation:turn 1s linear calc(var(--a,0) * -1s) 1 both}
+.turnb{animation:turnb 1s linear calc(var(--a,0) * -1s) 1 both}
+.hS{transform-box:fill-box;transform-origin:right center;animation:hoistS ${HOIST}}
 .hO{animation:hoistO ${HOIST}}
 .hF{animation:hoistF ${HOIST}}
 .hL{animation:hoistL ${HOIST}}
 .hG{animation:hoistG ${HOIST}}
-.fwave{transform-box:fill-box;transform-origin:left center;${loop('flagwave', 1.9, 'ease-in-out')}}
+.fwave{transform-box:fill-box;transform-origin:right center;${loop('flagwave', 1.9, 'ease-in-out')}}
 .wake{fill:none;stroke:#fff;stroke-width:1.6;stroke-linecap:round;opacity:.6;stroke-dasharray:14 5;animation:wflow .9s linear infinite}
 .wk>g{transform-box:fill-box;transform-origin:right center}
 .bf .wk>g{opacity:0}
@@ -230,7 +249,7 @@ const STYLE = `
 .fire{opacity:0}
 .mbob{${loop('mstep', 2.2, 'ease-in-out')}}
 .grass{${loop('grass', 5, 'ease-in-out')}}
-.working .gl{animation-duration:1.7s}
+.working .gcol>*{animation-duration:1.7s}
 .working .spark{animation-duration:2.4s}
 .beacon{${loop('blink', 1.6, 'ease-in-out')}}
 .lamp{${loop('twinkle', 3, 'ease-in-out')}}
@@ -242,6 +261,68 @@ const STYLE = `
 .ffR{animation:ffR 1.5s linear 2 both}
 .ffs{fill:none;stroke:#fff;stroke-width:1.6;opacity:0;transform-box:fill-box;transform-origin:center;animation:ffs .9s ease-out 1}
 `
+
+// The fleet's hulls and every boat's bow-on view are drawn once, in the
+// defs, and placed with <use>; a crew boat's sail takes its colour from --s.
+const CREW_HULL = `<path d="M-26 0H30Q25 9 17 10H-17Q-23 9 -26 0Z" fill="#f6f1e6"/><path d="M-24.5 3.5H27.5" stroke="var(--s)" stroke-width="2.4"/>
+<line x1="-3" y1="0" x2="-3" y2="-57" stroke="#5a3b22" stroke-width="1.8"/>
+<path d="M-1 -56Q23 -34 27 -5H-1Z" fill="var(--s)"/><path d="M-1 -33Q12 -30 21 -22L24 -14Q12 -22 -1 -24Z" fill="#fff" opacity=".6"/>`
+// A fishing boat's lantern is lit, and glows, only after dark.
+const SHELL_HULL = `<g transform="scale(-1 1)"><path d="M-30 0Q-34 -10 -42 -17Q-30 -9 -22 -7H22Q30 -7 40 -15Q35 0 26 8H-22Q-28 6 -30 0Z" fill="#5a4632"/><path d="M-27 -1H31" stroke="#e8dcc0" stroke-width="1.6"/>
+<rect x="-12" y="-17" width="20" height="10" rx="2" fill="#e8dcc0"/><line x1="16" y1="-7" x2="16" y2="-32" stroke="#3d2f20" stroke-width="2"/>
+<g class="navlamp"><circle class="lamp" cx="16" cy="-36" r="13" fill="#ffd76a" opacity=".35"/></g><circle class="lit" cx="16" cy="-36" r="4.6"/></g>`
+// Seen bow on, as it comes about: a short deep hull, the mast upright, and
+// the sails edge on.
+const LEAD_BOW = `<path d="M-12 0H12Q11 10 0 13Q-11 10 -12 0Z" fill="#7a4f2c"/><path d="M-11.4 3.5H11.4" stroke="#f4e3c1" stroke-width="1.6"/>
+<line x1="0" y1="0" x2="0" y2="-88" stroke="#5a3b22" stroke-width="2"/><path d="M-1 -72Q-9 -38 -6 -6H-1Z" fill="#fdfdf8"/><path d="M1 -60Q8 -32 6 -6H1Z" fill="#f2c14e"/>`
+const CREW_BOW = `<path d="M-8 0H8Q7 8 0 10Q-7 8 -8 0Z" fill="#f6f1e6"/><path d="M-7.6 3.5H7.6" stroke="var(--s)" stroke-width="2.4"/>
+<line x1="0" y1="0" x2="0" y2="-57" stroke="#5a3b22" stroke-width="1.8"/><path d="M1 -56Q8 -30 6 -5H1Z" fill="var(--s)"/>`
+const SHELL_BOW = `<path d="M-10 -7H10Q9 4 0 8Q-9 4 -10 -7Z" fill="#5a4632"/><rect x="-7" y="-17" width="14" height="10" rx="2" fill="#e8dcc0"/>
+<line x1="0" y1="-17" x2="0" y2="-32" stroke="#3d2f20" stroke-width="2"/><g class="navlamp"><circle class="lamp" cx="0" cy="-36" r="13" fill="#ffd76a" opacity=".35"/></g><circle class="lit" cx="0" cy="-36" r="4.6"/>`
+// A palm's crown at full size about the top of its trunk: fronds feathered
+// into leaflets that sweep towards each tip, and its coconuts. Every palm
+// draws a scaled clone of it.
+const CROWN = (() => {
+  const fronds: [number, number, string][] = [
+    [-150, 30, 'fa'], [-120, -40, 'fb'], [-50, -90, 'fa'], [20, -100, 'fb'], [100, -60, 'fa'], [150, 10, 'fb'], [80, 60, 'fc'], [-90, 70, 'fc'],
+  ]
+  const leaves = fronds
+    .map(([ex, ey, cls]) => {
+      const droop = 34
+      const mx = ex * 0.5
+      const my = ey * 0.5 - droop
+      const wd = Math.hypot(ex, ey) * 0.17
+      const at = (t: number): { x: number; y: number; nx: number; ny: number } => {
+        const dx = 2 * (1 - t) * mx + 2 * t * (ex - mx)
+        const dy = 2 * (1 - t) * my + 2 * t * (ey - my)
+        const d = Math.hypot(dx, dy) || 1
+        return { x: 2 * (1 - t) * t * mx + t * t * ex, y: 2 * (1 - t) * t * my + t * t * ey, nx: -dy / d, ny: dx / d }
+      }
+      const pt = (t: number, side: number, w: number): string => {
+        const p = at(Math.min(1, t))
+        const width = wd * Math.sin(Math.PI * Math.min(1, t)) ** 0.6 * w * side
+        return `${Math.round(p.x + p.nx * width)} ${Math.round(p.y + p.ny * width)}`
+      }
+      const steps = Array.from({ length: 12 }, (_, i) => (i + 0.5) / 13)
+      const upper = steps.map(t => `L${pt(t, 1, 0.45)}L${pt(t + 0.1, 1, 1.1)}`).join('')
+      const lower = [...steps].reverse().map(t => `L${pt(t + 0.1, -1, 0.9)}L${pt(t, -1, 0.4)}`).join('')
+      return `<path d="M0 0${upper}L${ex} ${ey}${lower}Z" class="${cls}"/><path d="M0 0Q${f(mx)} ${f(my + droop * 0.15)} ${ex} ${ey}" fill="none" class="rib" stroke-width="1.3"/>`
+    })
+    .join('')
+  return `<g id="crown">${leaves}<circle cx="-6" cy="8" r="7" fill="#6b4c2f"/><circle cx="7" cy="9" r="7" fill="#5c4027"/><circle cx="0" cy="14" r="6" fill="#6b4c2f"/></g>`
+})()
+
+// A leafy shrub standing on (0, 0), in flower.
+const SHRUB = `<g id="shrub"><ellipse cy="1" rx="31" ry="4" class="sh"/><g class="bush"><circle cx="-18" cy="-10" r="13"/><circle cx="0" cy="-17" r="16"/><circle cx="17" cy="-10" r="12"/><circle cx="8" cy="-4" r="10"/><circle cx="-8" cy="-4" r="10"/></g>
+<g class="bush2"><circle cx="-15" cy="-15" r="8"/><circle cx="1" cy="-24" r="9"/><circle cx="15" cy="-14" r="6"/></g><path class="leaf" d="M-29 -9l-5 -2M-24 -20l-4 -4M-9 -32l-1 -5M7 -33l3 -4M23 -19l5 -3M29 -6l5 0"/>
+<g class="flw"><circle cx="-12" cy="-9" r="2.6"/><circle cx="9" cy="-22" r="2.4"/><circle cx="19" cy="-6" r="2.2"/><circle cx="-3" cy="-1" r="2"/></g><g class="flc"><circle cx="-12" cy="-9" r=".9"/><circle cx="9" cy="-22" r=".9"/><circle cx="19" cy="-6" r=".8"/><circle cx="-3" cy="-1" r=".7"/></g></g>`
+
+// A tuft of beach grass rooted at (0, 0).
+const TUFT = '<path id="tuft" class="grass" d="M0 0q-3 -7 -9 -10M0 0q-1 -9 -3 -15M0 0q1 -8 4 -14M0 0q3 -6 9 -8"/>'
+
+// Each dinghy and fishing boat is a clone of these, its shadow on the water
+// drawn with its hull, and its wake apart, for a wake only shows under way.
+const BOAT_DEFS = `<g id="cH"><ellipse cx="0" cy="13" rx="27" ry="2.6" fill="#000" opacity=".12"/>${CREW_HULL}</g><g id="sH"><ellipse cx="0" cy="9" rx="36" ry="3" fill="#000" opacity=".14"/>${SHELL_HULL}</g><path id="cW" class="wake" d="M-28 7q-12 0 -26 4M-25 11q-9 2 -19 6"/><path id="sW" class="wake" d="M-40 4q-16 0 -34 5M-36 9q-12 2 -26 8"/><g id="lB">${LEAD_BOW}</g><g id="cB">${CREW_BOW}</g><g id="sB">${SHELL_BOW}</g>`
 
 const DEFS = `<defs>
 <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sky0"/><stop offset=".5" class="sky1"/><stop offset=".85" class="sky2"/><stop offset="1" class="sky3"/></linearGradient>
@@ -261,6 +342,8 @@ const DEFS = `<defs>
 <filter id="blur6" x="-30%" y="-10%" width="160%" height="120%"><feGaussianBlur stdDeviation="9"/></filter>
 <clipPath id="surf"><rect x="-300" y="-400" width="1000" height="400"/></clipPath>
 <clipPath id="hung"><path clip-rule="evenodd" d="M-2000 -2000H4000V3000H-2000ZM${ISLE - 75} 610Q${ISLE - 24} 668 ${ISLE + 23} 616L${ISLE + 23} 622Q${ISLE - 24} 690 ${ISLE - 75} 616Z"/></clipPath>
+${BOAT_DEFS}${CROWN}${SHRUB}${TUFT}
+<pattern id="grain" width="19" height="13" patternUnits="userSpaceOnUse"><g class="grain"><circle cx="3" cy="4" r=".7"/><circle cx="12" cy="9" r=".6"/><circle cx="16" cy="2" r=".5"/></g></pattern>
 <mask id="crescent"><rect x="-60" y="-60" width="120" height="120" fill="#fff"/><circle cx="21" cy="-12" r="41" fill="#000"/></mask>
 </defs>`
 
@@ -286,25 +369,25 @@ function glitter(): string {
     const half = 22 + (y - HORIZON) * 0.4
     const x = SUN_X + (rnd(i, 2) + rnd(i, 3) - 1) * half
     const rx = (4 + rnd(i, 4) * 12) * (0.55 + v * 1.5)
-    out += `<ellipse class="gl" cx="${f(x)}" cy="${f(y)}" rx="${f(rx)}" ry="${f(0.9 + v * 2)}" style="--d:${f(rnd(i, 5) * 3.4)}"/>`
+    out += `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(rx)}" ry="${f(0.9 + v * 2)}" style="--d:${f(rnd(i, 5) * 3.4)}"/>`
   }
   return out
 }
 
-// One row of wave crests. A tile holds three uneven crests and the row slides
-// by exactly one tile, so the loop has no seam.
+// One row of wave crests. A tile holds three uneven crests, a pattern repeats
+// it along the row, and the row slides by exactly one tile, so the loop has
+// no seam.
 function waveRow(i: number, y: number, period: number, amp: number, alpha: number, speed: number): string {
   const starts = [0.04 + rnd(i, 3) * 0.06, 0.38 + rnd(i, 4) * 0.08, 0.68 + rnd(i, 5) * 0.06]
   const sizes = [0.2 + rnd(i, 6) * 0.1, 0.13 + rnd(i, 7) * 0.08, 0.16 + rnd(i, 8) * 0.07]
+  const top = Math.ceil(amp) + 1
   let d = ''
-  for (let x = -period; x < W + period; x += period) {
-    for (let k = 0; k < 3; k++) {
-      const w = 2 * Math.round((sizes[k]! * period) / 2)
-      const a = amp * (1 - k * 0.18)
-      d += `M${Math.round(x + starts[k]! * period)} ${y}q${w / 2} ${f(-a)} ${w} 0q${-w / 2} ${f(-a * 0.15)} ${-w} 0Z`
-    }
+  for (let k = 0; k < 3; k++) {
+    const w = 2 * Math.round((sizes[k]! * period) / 2)
+    const a = amp * (1 - k * 0.18)
+    d += `M${Math.round(starts[k]! * period)} ${top}q${w / 2} ${f(-a)} ${w} 0q${-w / 2} ${f(-a * 0.15)} ${-w} 0Z`
   }
-  return `<g class="wv" style="--p:${-period}px;animation-duration:${f(period / speed)}s;--d:${i * 7}"><path class="swell crest" style="--d:${f(i * 1.3)}" opacity="${alpha}" d="${d}"/></g>`
+  return `<pattern id="wr${i}" width="${period}" height="${top + 1}" y="${y - top}" patternUnits="userSpaceOnUse"><path class="crest" d="${d}"/></pattern><g class="wv" style="--p:${-period}px;animation-duration:${f(period / speed)}s;--d:${i * 7}"><rect class="swell" style="--d:${f(i * 1.3)}" opacity="${alpha}" fill="url(#wr${i})" x="${-period}" y="${y - top}" width="${W + 2 * period}" height="${top + 1}"/></g>`
 }
 
 function waves(): string {
@@ -415,7 +498,9 @@ function bungalow(x: number, y: number, s: number): string {
 </g>`
 }
 
-function palm(x: number, y: number, s: number, lean: number, phase: number): string {
+// A palm rooted at (x, y), `s` times the crown's size, its top `lean` to the
+// side; `flip` mirrors its crown so no two palms look alike.
+function palm(x: number, y: number, s: number, lean: number, phase: number, flip = false): string {
   const tx = x + lean * s
   const ty = y - 190 * s
   let rings = ''
@@ -423,29 +508,19 @@ function palm(x: number, y: number, s: number, lean: number, phase: number): str
     const t = i / 9
     const rx = x + lean * s * t * t
     const ry = y - 190 * s * t
-    rings += `<line x1="${f(rx - 7 * s)}" y1="${f(ry)}" x2="${f(rx + 7 * s)}" y2="${f(ry + 3 * s)}" class="ring" stroke-width="${f(1.4 * s)}"/>`
+    rings += `M${f(rx - 7 * s)} ${f(ry)}L${f(rx + 7 * s)} ${f(ry + 3 * s)}`
   }
-  const fronds: [number, number, string][] = [
-    [-150, 30, 'fa'], [-120, -40, 'fb'], [-50, -90, 'fa'], [20, -100, 'fb'], [100, -60, 'fa'], [150, 10, 'fb'], [80, 60, 'fc'], [-90, 70, 'fc'],
-  ]
-  const leaves = fronds
-    .map(([dx, dy, cls]) => {
-      const ex = dx * s
-      const ey = dy * s
-      const len = Math.hypot(ex, ey)
-      const nx = -ey / len
-      const ny = ex / len
-      const droop = 34 * s
-      const mx = ex * 0.5
-      const my = ey * 0.5 - droop
-      const wd = len * 0.2
-      return `<path d="M0 0 Q${f(mx + nx * wd)} ${f(my + ny * wd)} ${f(ex)} ${f(ey)} Q${f(mx - nx * wd * 0.6)} ${f(my - ny * wd * 0.6 + droop * 0.5)} 0 0Z" class="${cls}"/><path d="M0 0 Q${f(mx)} ${f(my + droop * 0.15)} ${f(ex)} ${f(ey)}" fill="none" class="rib" stroke-width="${f(1.3 * s)}"/>`
-    })
-    .join('')
-  return `<g class="palm" style="transform-origin:${x}px ${y}px;--d:${phase}">
-<path d="M${x - 9 * s} ${y} Q${x + lean * s * 0.2} ${y - 100 * s} ${tx - 5 * s} ${ty} L${tx + 5 * s} ${ty} Q${x + lean * s * 0.2 + 14 * s} ${y - 100 * s} ${x + 9 * s} ${y} Z" class="trunk"/>${rings}
-<g transform="translate(${tx} ${ty})">${leaves}<circle cx="-6" cy="8" r="${7 * s}" fill="#6b4c2f"/><circle cx="7" cy="9" r="${7 * s}" fill="#5c4027"/><circle cx="0" cy="14" r="${6 * s}" fill="#6b4c2f"/></g></g>`
+  const bend = x + lean * s * 0.2
+  return `<ellipse cx="${x + 4}" cy="${y + 2}" rx="${f(18 * s)}" ry="3" class="sh"/><g class="palm" style="transform-origin:${x}px ${y}px;--d:${phase}">
+<path d="M${f(x - 9 * s)} ${y}Q${f(bend)} ${f(y - 100 * s)} ${f(tx - 5 * s)} ${f(ty)}L${f(tx + 5 * s)} ${f(ty)}Q${f(bend + 14 * s)} ${f(y - 100 * s)} ${f(x + 9 * s)} ${y}Z" class="trunk"/><path d="M${f(x + 3 * s)} ${y}Q${f(bend + 9 * s)} ${f(y - 100 * s)} ${f(tx + 2 * s)} ${f(ty)}L${f(tx + 5 * s)} ${f(ty)}Q${f(bend + 14 * s)} ${f(y - 100 * s)} ${f(x + 9 * s)} ${y}Z" class="bark"/><path d="${rings}" class="ring" stroke-width="${f(1.4 * s)}"/>
+<use href="#crown" transform="translate(${f(tx)} ${f(ty)}) scale(${flip ? -s : s} ${s})"/></g>`
 }
+
+// Where tufts grow: along the back of the sand, where they stand against the
+// water behind, and about the shrubs.
+const TUFTS: [number, number, number][] = [
+  [1232, 676, 0.8], [1256, 667, 1], [1338, 656, 0.9], [1352, 655, 0.7], [1488, 653, 1], [1503, 652, 0.75], [1626, 651, 0.9], [1306, 705, 0.8], [1476, 702, 0.7],
+]
 
 function sparkles(): string {
   let out = ''
@@ -465,12 +540,13 @@ const FLAG_TINT: Record<Signal, string> = { none: '#1d4f91', permission: '#ff8f1
 const LAMP_TINT: Record<Signal, string> = { ...FLAG_TINT, none: '#ffe9a6' }
 
 // The lead boat carries the mascot while the agent works, and tells the person
-// the agent needs them: its pennant grows into a flag in the signal's colour
+// the agent needs them: its pennant, which streams aft in the wind of the
+// boat's way, grows into a flag in the signal's colour
 // and a patch of that colour spreads on the water under it; by night its
 // masthead lamp takes the colour too. One signal gives way to the next over
 // HOIST_S. The attributes hold the settled look, and the animations run from
 // the look before it.
-function leadBoat(flag: Flag, captain: string | undefined, wake = ''): string {
+function leadBoat(flag: Flag, wake = ''): string {
   const { from, to } = flag
   const size = (signal: Signal): number => (signal === 'none' ? 1 : 2.6)
   const shown = (signal: Signal): number => (signal === 'none' ? 0 : 1)
@@ -484,10 +560,6 @@ function leadBoat(flag: Flag, captain: string | undefined, wake = ''): string {
     `--s0:${size(from)};--s1:${size(to)}`,
     `--o0:${shown(from)};--o1:${shown(to)}`,
   ].join(';')
-  // The mascot rides at the stern, against the white sail, and hops while the
-  // agent needs the person. `captain` holds the attributes that time its
-  // coming aboard or going ashore; with none given, nobody is on deck.
-  const crew = captain === undefined ? '' : `<g ${captain}><g transform="translate(-20 0) scale(1.7)">${rider(flag)}</g></g>`
   const glow = [[84, 17, 0.13], [60, 12, 0.16], [38, 8, 0.2]]
     .map(([rx, ry, alpha]) => `<ellipse class="hG" cx="0" cy="10" rx="${rx}" ry="${ry}" fill="${patch(to, from)}" opacity="${alpha}"/>`)
     .join('')
@@ -496,8 +568,7 @@ function leadBoat(flag: Flag, captain: string | undefined, wake = ''): string {
 <path d="M-36 0L36 0Q30 12 22 13L-22 13Q-30 12 -36 0Z" fill="#7a4f2c"/><path d="M-34 3.5H34" stroke="#f4e3c1" stroke-width="1.6"/>
 <line x1="0" y1="0" x2="0" y2="-88" stroke="#5a3b22" stroke-width="2"/>
 <path d="M-2 -72Q-30 -36 -38 -6L-2 -6Z" fill="#fdfdf8"/><path d="M2 -60Q22 -32 30 -6L2 -6Z" fill="#f2c14e"/>
-<g class="fwave"><g class="hS" transform="translate(1 -82) scale(${size(to)}) translate(-1 82)"><path class="hF" d="M1 -87H16L12 -82L16 -77H1Z" fill="${FLAG_TINT[to]}"/></g></g>
-${crew}
+<g class="fwave"><g class="hS" transform="translate(-1 -82) scale(${size(to)}) translate(1 82)"><path class="hF" d="M-1 -87H-16L-12 -82L-16 -77H-1Z" fill="${FLAG_TINT[to]}"/></g></g>
 <g class="navlamp"><g class="hO" opacity="${shown(to)}"><g class="beacon"><circle class="hL" cx="0" cy="-91" r="17" fill="${LAMP_TINT[to]}" opacity=".4"/></g></g>
 <circle class="hL" cx="0" cy="-91" r="9" fill="${LAMP_TINT[to]}" opacity=".3"/><circle class="hL" cx="0" cy="-91" r="4.4" fill="${LAMP_TINT[to]}"/></g></g>`
 }
@@ -505,39 +576,108 @@ ${crew}
 const CREW_SAILS = ['#ef6f5e', '#2bb8a6', '#8b7bff', '#ff9f43', '#3d9be9']
 
 function crewBoat(sail: string, wake: string): string {
-  return `<ellipse cx="0" cy="13" rx="27" ry="2.6" fill="#000" opacity=".12"/><g class="wk"><g ${wake}><path class="wake" d="M-28 7q-12 0 -26 4M-25 11q-9 2 -19 6"/></g></g>
-<path d="M-26 0H30Q25 9 17 10H-17Q-23 9 -26 0Z" fill="#f6f1e6"/><path d="M-24.5 3.5H27.5" stroke="${sail}" stroke-width="2.4"/>
-<line x1="-3" y1="0" x2="-3" y2="-57" stroke="#5a3b22" stroke-width="1.8"/>
-<path d="M-1 -56Q23 -34 27 -5H-1Z" fill="${sail}"/><path d="M-1 -33Q12 -30 21 -22L24 -14Q12 -22 -1 -24Z" fill="#fff" opacity=".6"/>`
+  return `<g class="wk"><g ${wake}><use href="#cW"/></g></g><use href="#cH" style="--s:${sail}"/>`
 }
 
-const shellBoat = (wake: string): string => `<ellipse cx="0" cy="9" rx="36" ry="3" fill="#000" opacity=".14"/><g class="wk"><g ${wake}><path class="wake" d="M-40 4q-16 0 -34 5M-36 9q-12 2 -26 8"/></g></g>
-<g transform="scale(-1 1)"><path d="M-30 0Q-34 -10 -42 -17Q-30 -9 -22 -7H22Q30 -7 40 -15Q35 0 26 8H-22Q-28 6 -30 0Z" fill="#5a4632"/><path d="M-27 -1H31" stroke="#e8dcc0" stroke-width="1.6"/>
-<rect x="-12" y="-17" width="20" height="10" rx="2" fill="#e8dcc0"/><line x1="16" y1="-7" x2="16" y2="-32" stroke="#3d2f20" stroke-width="2"/>
-<circle class="lamp" cx="16" cy="-36" r="13" fill="#ffd76a" opacity=".35"/><circle cx="16" cy="-36" r="4.6" fill="#ffe9a6"/></g>`
+const shellBoat = (wake: string): string => `<g class="wk"><g ${wake}><use href="#sW"/></g></g><use href="#sH"/>`
+
+function sailOf(boat: Boat): string {
+  return CREW_SAILS[boat.slot % CREW_SAILS.length] ?? '#ef6f5e'
+}
+
+// A boat of `boat`'s kind seen bow on, at the scale of its route; `turning`
+// holds the attributes that widen it as the boat comes about.
+function bowOf(boat: Boat, scale: number, turning: string): string {
+  const view = boat.kind === 'lead' ? '#lB' : boat.kind === 'crew' ? `#cB" style="--s:${sailOf(boat)}` : '#sB'
+  return `<g ${turning}><g transform="scale(${scale})"><g class="boat"><use href="${view}"/></g></g></g>`
+}
+
+// The mascot at the stern of the lead boat, at the scale of its route. It is
+// not turned with the boat: as the boat comes about it keeps facing out and
+// the deck swings round under it (`shift` holds the attributes that move it
+// from one end of the deck to the other). `captain` holds the attributes that
+// time its coming aboard or going ashore.
+function crewOf(flag: Flag, scale: number, captain: string, shift: string): string {
+  return `<g transform="scale(${scale})"><g class="boat"><g ${captain}><g ${shift}><g transform="scale(1.7)">${rider(flag)}</g></g></g></g></g>`
+}
 
 // A boat of `boat`'s kind. `wake` holds the attributes of its wake: out on a
 // circuit the wake is hidden unless they say otherwise.
 function hullOf(boat: Boat, flag: Flag, wake = ''): string {
-  return boat.kind === 'lead' ? leadBoat(flag, undefined, wake) : boat.kind === 'crew' ? crewBoat(CREW_SAILS[boat.slot % CREW_SAILS.length] ?? '#ef6f5e', wake) : shellBoat(wake)
+  return boat.kind === 'lead' ? leadBoat(flag, wake) : boat.kind === 'crew' ? crewBoat(sailOf(boat), wake) : shellBoat(wake)
 }
 
-// How many straight legs a boat's way in or out is drawn as: fewer when many
-// boats are under way at once, to keep the scene within the size a surface
-// takes.
-function legsFor(boats: readonly Boat[], seconds: number, isPlain: boolean): number {
-  const underWay = boats.filter(boat => boat.gone !== undefined || seconds - boat.born / 1000 < enterSeconds(boat)).length
-  return isPlain ? 9 : underWay > 6 ? 14 : 24
+// The times across `span` at which a boat's way in or out is keyed. The way
+// is sampled densely, then thinned to the fewest keys that keep every sample
+// within `tolerance` of the straight runs between them. Each scene keys a way
+// alike, so a redraw takes a boat up where the scene before left it, and a
+// straight stretch costs two keys however long it is.
+const KEY_STEP_S = 0.1
+function keyTimes(span: number, valuesAt: (at: number) => readonly number[], tolerance: number): number[] {
+  const count = Math.max(1, Math.ceil(span / KEY_STEP_S))
+  const times = Array.from({ length: count + 1 }, (_, i) => (i / count) * span)
+  const values = times.map(valuesAt)
+  const kept = [0, count]
+  const thin = (a: number, b: number): void => {
+    const [from, to] = [values[a] ?? [], values[b] ?? []]
+    let worst = tolerance
+    let at = -1
+    for (let i = a + 1; i < b; i++) {
+      const s = (i - a) / (b - a)
+      const off = Math.max(0, ...(values[i] ?? []).map((v, d) => Math.abs(v - ((from[d] ?? 0) + ((to[d] ?? 0) - (from[d] ?? 0)) * s))))
+      if (off > worst) {
+        worst = off
+        at = i
+      }
+    }
+    if (at >= 0) {
+      kept.push(at)
+      thin(a, at)
+      thin(at, b)
+    }
+  }
+  thin(0, count)
+  return kept.sort((x, y) => x - y).map(i => times[i] ?? 0)
 }
 
-function keyframes(name: string, points: readonly { x: number; y: number }[]): string {
-  const last = Math.max(1, points.length - 1)
-  return `@keyframes ${name}{${points.map((p, i) => `${f((i / last) * 100)}%{transform:translate(${Math.round(p.x)}px,${Math.round(p.y)}px)}`).join('')}}`
+// How far keys may stray from a boat's way, in px: further in a plain scene,
+// which must stay small.
+function toleranceFor(isPlain: boolean): number {
+  return isPlain ? 2.5 : 1
+}
+
+// How clearly a boat shows through the haze over the horizon at height `y`.
+function clearAt(y: number): number {
+  return Math.max(0, Math.min(1, (y - HORIZON_Y - 4) / 36))
+}
+
+// Keyframes that carry a group through `stops`, each `p` of the way through.
+function keyframes(name: string, stops: readonly { p: number; x: number; y: number }[]): string {
+  return `@keyframes ${name}{${stops.map(s => `${f(s.p * 100)}%{transform:translate(${Math.round(s.x)}px,${Math.round(s.y)}px)}`).join('')}}`
 }
 
 // Keyframes that carry a group sideways from `a` to `b` on `curve`.
 function glide(name: string, a: number, b: number, curve: readonly number[]): string {
   return `@keyframes ${name}{0%{transform:translateX(${Math.round(a)}px);animation-timing-function:cubic-bezier(${curve.join()})}100%{transform:translateX(${Math.round(b)}px)}}`
+}
+
+// Keyframes that size a boat to how far off it is at each step, relative to
+// the size it was drawn at, and, for a boat out on the open sea, let it come
+// up out of the haze at the horizon and sink back into it. None when the
+// boat keeps one depth.
+function sizing(name: string, stops: readonly { p: number; k: number; y: number }[]): string {
+  const fading = stops.some(s => clearAt(s.y) < 1)
+  if (!fading && stops.every(s => Math.abs(s.k - 1) < 0.02)) {
+    return ''
+  }
+  const seen = (y: number): string => (fading ? `;opacity:${f(clearAt(y))}` : '')
+  return `@keyframes ${name}{${stops.map(s => `${f(s.p * 100)}%{transform:scale(${Math.round(s.k * 1000) / 1000})${seen(s.y)}}`).join('')}}`
+}
+
+// A boat's size and haze as its key values: a hundredth of its size is about
+// half a pixel on a dinghy, and a fortieth of its haze about as plain.
+function sizeKeys(k: number, y: number): number[] {
+  return [k * 60, clearAt(y) * 40]
 }
 
 // One boat at `seconds` on the clock, and the keyframes of its own it needs.
@@ -546,7 +686,7 @@ function glide(name: string, a: number, b: number, curve: readonly number[]): st
 // is on its way in, what separates that way from the circuit is added on top
 // and runs down to nothing. Called home, it turns from where it was and
 // follows its way out.
-function vessel(boat: Boat, seconds: number, flag: Flag, legs: number): { svg: string; css: string } {
+function vessel(boat: Boat, seconds: number, flag: Flag, tolerance: number): { svg: string; css: string } {
   const route = routeOf(boat)
   const hull = `<g class="boat">${hullOf(boat, flag)}</g>`
   const bob = `--d:${f(boat.slot * 0.7)}`
@@ -555,54 +695,259 @@ function vessel(boat: Boat, seconds: number, flag: Flag, legs: number): { svg: s
     const gone = boat.gone
     const span = leaveSeconds(boat)
     // Sideways it glides on one curve; up and down it follows its lane.
-    const way = Array.from({ length: legs + 1 }, (_, i) => whereabouts(boat, gone + (i / legs) * span * 1000))
     const from = fixAt(boat, (gone - boat.born) / 1000)
+    const straight = route.isFar
+    const placeAt = (t: number): Point => whereabouts(boat, gone + t * 1000)
+    const times = keyTimes(span, t => { const p = placeAt(t); return [straight ? p.x : 0, p.y, ...sizeKeys(depthScale(p.y) / depthScale(from.y), p.y)] }, tolerance)
+    const way = times.map(t => ({ p: t / span, ...placeAt(t) }))
+    const end = placeAt(span)
     const heading = boat.from === 'L' ? 1 : -1
-    const turned = from.heading === heading ? hull : `<g class="turn">${hull}</g>`
     const a = f(seconds - gone / 1000)
+    // It comes about from however far round its circuit had turned it: the
+    // turn is joined where its side view is as wide, and faces as, it was.
+    const lap = ((((gone - boat.born) / 1000 + lapStart(boat)) / route.seconds) % 1 + 1) % 1
+    const facing = facingAt(LAP_FACING, lap) * heading
+    const into = `style="--a:${f(seconds - gone / 1000 + (facing + 1) / 2)}"`
+    const turned = facing > 0.999 ? hull : `<g class="turn" ${into}>${hull}</g>${bowOf(boat, 1, `class="turnb" ${into}`)}`
+    // Out to sea it heads for the horizon on a straight line that the eye
+    // foreshortens, so its sideways travel keeps step with its lane's.
+    const sized = sizing(`${name}os`, way.map(w => ({ p: w.p, k: depthScale(w.y) / depthScale(from.y), y: w.y })))
+    // The groups inside the outermost take its timing, which they inherit.
+    const shrink = sized === '' ? turned : `<g class="way" style="animation-name:${name}os">${turned}</g>`
     return {
-      css: glide(`${name}ox`, from.x, way[legs]?.x ?? from.x, LEAVE_X) + keyframes(`${name}out`, way.map(p => ({ x: 0, y: p.y }))),
-      svg: `<g class="way" transform="translate(${f(from.x)} 0)" style="animation-name:${name}ox;--e:${span}s;--a:${a}"><g class="way" transform="translate(0 ${f(from.y)})" style="animation-name:${name}out;--e:${span}s;--a:${a};${bob}">
-<g transform="scale(${heading * route.scale} ${route.scale})">${turned}</g></g></g>`,
+      css: glide(`${name}ox`, from.x, straight ? from.x : end.x, LEAVE_X) + keyframes(`${name}out`, way.map(w => ({ p: w.p, x: straight ? w.x - from.x : 0, y: w.y }))) + sized,
+      svg: `<g class="way" transform="translate(${f(from.x)} 0)" style="animation-name:${name}ox;--e:${span}s;--a:${a}"><g class="way" transform="translate(0 ${f(from.y)})" style="animation-name:${name}out;${bob}">
+<g transform="scale(${f3(heading * sizeOn(boat, from.y))} ${f3(sizeOn(boat, from.y))})">${shrink}</g></g></g>`,
     }
   }
   const age = seconds - boat.born / 1000
   const span = enterSeconds(boat)
   // On its way in from the edge its wake trails it, and dies away as it
   // settles onto its circuit.
-  const fading = age < span ? `class="way" style="animation-name:wfade;--e:${f(span)}s;--a:${f(age)}"` : ''
-  const lap = `<g style="--u:${route.seconds}s;--b:${f(age + lapStart(boat))};--r:${route.rx}px;--q:${route.ry}px;${bob}" transform="translate(${route.cx} ${route.cy})">
-<g class="bx"><g class="by"><g class="bf"><g transform="scale(${route.scale})"><g class="boat">${hullOf(boat, flag, fading)}</g></g></g></g></g></g>`
-  if (age >= span) {
-    return { svg: lap, css: '' }
-  }
+  // On its way in, every group inside the outermost takes that one's timing,
+  // which it inherits.
+  const fading = age < span ? 'class="way" style="animation-name:wfade"' : ''
+  const isComing = age < span
   // What separates its way in from the circuit: sideways, the run from the
   // edge to where it joins, glided on one curve, and the circuit's own drift
-  // over that time; up and down, its lane's.
+  // over that time (or, out at sea, its whole sideways way); up and down, its
+  // lane's; and how much nearer or further off than its circuit it is.
   const join = lapAt(boat, span)
-  const edge = fixAt(boat, 0)
-  const apart = Array.from({ length: legs + 1 }, (_, i) => {
-    const at = (i / legs) * span
+  const apartAt = (at: number): { x: number; y: number; k: number; seen: number } => {
+    const fix = fixAt(boat, at)
     const round = lapAt(boat, at)
-    return { x: join.x - round.x, y: fixAt(boat, at).y - round.y }
-  })
+    return { x: (route.isFar ? fix.x : join.x) - round.x, y: fix.y - round.y, k: depthScale(fix.y) / depthScale(round.y), seen: fix.y }
+  }
+  const times = isComing ? keyTimes(span, at => { const a = apartAt(at); return [a.x, a.y, ...sizeKeys(a.k, a.seen)] }, tolerance) : []
+  const apart = times.map(at => ({ p: at / span, ...apartAt(at) }))
+  const sized = sizing(`${name}is`, apart.map(a => ({ p: a.p, k: a.k, y: a.seen })))
+  // A roaming boat drifts near and far on its own beat, sized as it goes.
+  const roaming = route.drift !== undefined
+  const size = roaming ? 1 : route.scale
+  const boat0 = `<g class="bf"><g transform="scale(${size})"><g class="boat">${hullOf(boat, flag, fading)}</g></g></g>${bowOf(boat, size, 'class="bw"')}`
+  const grown = sized === '' ? boat0 : `<g class="way" style="animation-name:${name}is">${boat0}</g>`
+  const drift = roaming ? `;--v:${route.drift}s;--c:${f(age + lapStart(boat) + route.driftFrom * (route.drift ?? 0))};--z0:${sizesOf(boat)[0]};--z1:${sizesOf(boat)[1]}` : ''
+  const lap = `<g style="--u:${route.seconds}s;--b:${f(age + lapStart(boat))};--r:${route.rx}px;--q:${route.ry}px;${bob}${drift}" transform="translate(${route.cx} ${route.cy})">
+<g class="bx">${roaming ? `<g class="bv"><g class="bz">${grown}</g></g>` : `<g class="by">${grown}</g>`}</g></g>`
+  if (!isComing) {
+    return { svg: lap, css: '' }
+  }
+  const edge = fixAt(boat, 0)
   const a = `--e:${span}s;--a:${f(age)}`
   return {
-    css: glide(`${name}ix`, edge.x - join.x, 0, ENTER_X) + keyframes(`${name}in`, apart),
-    svg: `<g class="way" style="animation-name:${name}ix;${a}"><g class="way" style="animation-name:${name}in;${a}">${lap}</g></g>`,
+    css: (route.isFar ? '' : glide(`${name}ix`, edge.x - join.x, 0, ENTER_X)) + keyframes(`${name}in`, apart) + sized,
+    svg: route.isFar
+      ? `<g class="way" style="animation-name:${name}in;${a}">${lap}</g>`
+      : `<g class="way" style="animation-name:${name}ix;${a}"><g class="way" style="animation-name:${name}in">${lap}</g></g>`,
   }
 }
 
-// The boats on one side of the island: `isBehind` picks those that round it on
-// the far water and are drawn before it. Far boats come first, so a near one
-// passes in front.
-function fleet(boats: readonly Boat[], isBehind: boolean, seconds: number, flag: Flag, isPlain: boolean): { svg: string; css: string } {
-  const drawn = boats
-    .filter(boat => sailsBehind(boat) === isBehind)
-    .sort((a, b) => routeOf(a).cy - routeOf(b).cy)
-    .map(boat => vessel(boat, seconds, flag, legsFor(boats, seconds, isPlain)))
-  return { svg: drawn.map(one => one.svg).join(''), css: drawn.map(one => one.css).join('') }
+// The boats on the water, each painted on the far side of the island or the
+// near side. Every circuit keeps clear of the island, so a boat is on the far
+// side only while it rounds the island behind it on its way in or out, level
+// with it; for that trip it is drawn twice, a copy on each side, each shown in
+// its turn.
+function fleets(boats: readonly Boat[], seconds: number, flag: Flag, isPlain: boolean): { css: string; far: Part[]; near: Part[] } {
+  const far: Part[] = []
+  const near: Part[] = []
+  let css = ''
+  boats.forEach((boat, index) => {
+    const drawn = vessel(boat, seconds, flag, toleranceFor(isPlain))
+    const one = { css: drawn.css, svg: `<g id="v${index}" data-b="${boat.kind}${boat.slot}">${drawn.svg}</g>`, copy: `<use href="#v${index}"/>` }
+    const roam = roamSpan(isPlain)
+    const depth = depthIn(boat, seconds, AHEAD_S, roam)
+    const motion = { depthIn: (later: number): number => depthIn(boat, seconds, later, roam), xIn: (later: number): number => whereabouts(boat, (seconds + later) * 1000).x, moving: movingFor(boat, seconds, roam), ...FLEET_REACH }
+    css += one.css
+    if (!sailsBehind(boat)) {
+      near.push({ svg: one.svg, copy: one.copy, depth, ...motion })
+      return
+    }
+    const isLeaving = boat.gone !== undefined
+    const start = (isLeaving ? (boat.gone ?? 0) : boat.born) / 1000
+    const span = isLeaving ? leaveSeconds(boat) : enterSeconds(boat)
+    const age = seconds - start
+    if (age >= span) {
+      near.push({ svg: one.svg, copy: one.copy, depth, ...motion })
+      return
+    }
+    // The second, from `start`, the boat comes level with the island or
+    // leaves it astern.
+    const isLevel = (at: number): boolean => whereabouts(boat, (start + at) * 1000).x > ISLAND_EDGE
+    let turn = span
+    for (let at = 0; at <= span; at += 0.1) {
+      if (isLevel(at) !== isLevel(0)) {
+        turn = at
+        break
+      }
+    }
+    const behind: Span[] = isLevel(0) ? [[0, turn]] : [[turn, span]]
+    const name = `${boat.kind}${boat.slot}`
+    const endsBehind = isLeaving && isLevel(span)
+    css += `${shownIn(`${name}f`, behind, span, endsBehind ? 1 : 0)}${shownIn(`${name}n`, outside(behind, span), span, endsBehind ? 0 : 1)}`
+    const shown = { far: stepped(`${name}f`, span, age), near: stepped(`${name}n`, span, age) }
+    far.push({ svg: `<g ${shown.far}>${one.svg}</g>`, copy: `<g ${shown.far}>${one.copy}</g>`, depth, ...motion })
+    near.push({ svg: `<g ${shown.near}>${one.copy}</g>`, copy: `<g ${shown.near}>${one.copy}</g>`, depth, ...motion })
+  })
+  const byDepth = (a: Part, b: Part): number => a.depth - b.depth
+  const behind = stack(far.sort(byDepth), 'zf')
+  return { css: css + behind.css, far: behind.parts, near }
 }
+
+// Boats painted far to near for as long as the scene lasts. Boats on their
+// circuits keep one order; boats on their way in or out take their places
+// among them, and among each other, by how near they are. That arrangement
+// only matters between boats close enough to overlap, so the time is cut
+// where two such boats change places in depth, or come close together, and
+// each moving boat is drawn once for each stretch in which its place differs
+// from the one before, shown only then.
+// Two boats close enough that one may hide part of the other: less than
+// their hulls' widths apart across the view, and less than a sail's height
+// apart in depth. A dinghy or fishing boat reaches about as far as one at
+// its largest; the lead boat is bigger.
+const FLEET_REACH = { wide: 90, tall: 70 }
+const LEAD_REACH = { wide: 130, tall: 130 }
+function isClose(a: Part, b: Part, later: number): boolean {
+  return Math.abs(a.xIn(later) - b.xIn(later)) < (a.wide + b.wide) / 2 && Math.abs(a.depthIn(later) - b.depthIn(later)) < Math.max(a.tall, b.tall)
+}
+function stack(parts: readonly Part[], prefix: string): { parts: Part[]; css: string } {
+  const still = parts.filter(part => part.moving <= 0)
+  const movers = parts.filter(part => part.moving > 0)
+  const horizon = Math.max(0, ...movers.map(part => part.moving))
+  const placesAt = (later: number): [number, number][] => {
+    const slots = movers.map(part => still.filter(other => other.depth < part.depthIn(later)).length)
+    return movers.map((part, m) => [slots[m] ?? 0, movers.filter((other, k) => k !== m && slots[k] === slots[m] && (other.depthIn(later) < part.depthIn(later) || (other.depthIn(later) === part.depthIn(later) && k < m))).length])
+  }
+  // Each moving boat against every other boat: whether it is the nearer, and
+  // whether the two are close.
+  const pairsAt = (later: number): string =>
+    movers
+      .map((part, m) =>
+        parts
+          .filter(other => other !== part)
+          .map(other => (isClose(part, other, later) ? (part.depthIn(later) > other.depthIn(later) ? 'n' : 'f') : '-'))
+          .join('') + m,
+      )
+      .join()
+  const cuts = [0]
+  let last = pairsAt(0)
+  for (let later = 0.1; later <= horizon + 0.05; later += 0.1) {
+    const now = pairsAt(later)
+    // A cut is needed where a close pair changes places, or a pair comes
+    // close; two boats drawing apart need none.
+    const isChanged = [...now].some((mark, k) => mark !== '-' && mark !== last[k])
+    if (isChanged) {
+      cuts.push(later)
+    }
+    last = now
+  }
+  // A stretch is cut wherever a pair comes close or a close pair trades
+  // places, so every pair that is close at any time in a stretch is close,
+  // and in that order, at its start: the order there holds for it all.
+  const stretches = cuts.map((from, j) => {
+    const to = cuts[j + 1] ?? horizon
+    return { from, to, places: placesAt(from) }
+  })
+  const buckets: { rank: number; from: number; part: Part }[][] = still.map(() => [])
+  buckets.push([])
+  let css = ''
+  movers.forEach((part, m) => {
+    // Its own stretches: runs of stretches over which its place holds.
+    const runs: { from: number; to: number; place: [number, number] }[] = []
+    for (const stretch of stretches) {
+      const place = stretch.places[m] ?? [0, 0]
+      const run = runs[runs.length - 1]
+      if (run !== undefined && run.place[0] === place[0] && run.place[1] === place[1]) {
+        run.to = stretch.to
+      } else {
+        runs.push({ from: stretch.from, to: stretch.to, place })
+      }
+    }
+    runs.forEach((run, j) => {
+      const isLast = j === runs.length - 1
+      let placed = part
+      if (runs.length > 1) {
+        const name = `${prefix}${m}t${j}`
+        // Every gate in this stack shares one timing, set by its class.
+        const gate = `class="cut ${prefix}" style="animation-name:${name}"`
+        css += shownIn(name, [[run.from, isLast ? horizon : run.to]], horizon, isLast ? 1 : 0)
+        placed = { ...part, svg: `<g ${gate}>${j === 0 ? part.svg : part.copy}</g>`, copy: `<g ${gate}>${part.copy}</g>` }
+      }
+      buckets[run.place[0]]?.push({ rank: run.place[1], from: run.from, part: placed })
+    })
+  })
+  if (css !== '') {
+    css += `.${prefix}{--e:${f(Math.max(0.1, horizon))}s;--a:0}`
+  }
+  const out: Part[] = []
+  buckets.forEach((bucket, k) => {
+    out.push(...bucket.sort((a, b) => a.rank - b.rank || a.from - b.from).map(entry => entry.part))
+    const here = still[k]
+    if (here !== undefined) {
+      out.push(here)
+    }
+  })
+  return { parts: out, css }
+}
+
+// Where the island begins, for a boat passing behind it: the jetty's tip,
+// less half a boat.
+const ISLAND_EDGE = JETTY.tip - 40
+
+// A boat drawn with how near it sails, so that boats can be painted far to
+// near: `depth` now, `depthIn` some seconds from now, and for how many more
+// seconds that changes.
+//
+// A boat that must be painted in more than one place is drawn in full once,
+// under an id, and placed again with <use>: `copy` places it again.
+type Part = { svg: string; copy: string; depth: number; depthIn: (later: number) => number; xIn: (later: number) => number; moving: number; wide: number; tall: number }
+
+// How near the viewer a boat sails, as the height of its waterline. Out on
+// its circuit it keeps to a narrow band, and that band's middle stands for it;
+// on its way in or out it crosses others, and where it will be a moment from
+// now stands for it until the scene is drawn again.
+const AHEAD_S = 1.5
+
+function depthIn(boat: Boat, seconds: number, later: number, roam: number): number {
+  return movingFor(boat, seconds, roam) > later ? whereabouts(boat, (seconds + later) * 1000).y : routeOf(boat).cy
+}
+
+// For how many more seconds a boat's depth keeps changing in this scene: on
+// its way in or out, or for as long as the scene works out a roaming boat's
+// place.
+function movingFor(boat: Boat, seconds: number, roam: number): number {
+  if (boat.gone !== undefined) {
+    return boat.gone / 1000 + leaveSeconds(boat) - seconds
+  }
+  const coming = Math.max(0, boat.born / 1000 + enterSeconds(boat) - seconds)
+  return roams(boat) ? Math.max(coming, roam) : coming
+}
+
+// How far ahead a scene works out roaming boats' order: less far in a plain
+// scene, which must stay small, and is drawn again sooner.
+export function roamSpan(isPlain: boolean): number {
+  return isPlain ? PLAIN_ROAM_S : ROAM_S
+}
+const PLAIN_ROAM_S = 20
 
 // Slow rings on the water while the conversation is being compacted.
 const WHIRLPOOL = `<g transform="translate(860 562)" fill="none">${[58, 38, 18]
@@ -737,7 +1082,10 @@ const M_STEPPING = `<g class="mstep">${clay(M_LEGS_A)}</g><g class="mstep" style
 const M_ROD = `<g class="lrod" opacity="0"><path d="M-8.5 -7.5L-21 -19" stroke="#7a5a3a" stroke-width=".7" fill="none"/><path d="M-21 -19L-25 3.6" stroke="#fff" stroke-width=".25" opacity=".8" fill="none"/>
 <ellipse cx="-25" cy="5" rx="3.4" ry=".9" fill="none" stroke="#fff" stroke-width=".3" opacity=".6"/><g class="mbob"><circle cx="-25" cy="4.2" r="1.1" fill="#ef4f3f"/><path d="M-26.1 4.2a1.1 1.1 0 0 0 2.2 0z" fill="#fff"/></g></g>`
 // What it wears on the lounger, and what it holds at the bar.
-const M_SHADES = `<g class="lsun" opacity="0">${inked('M-6.2 -10.5h5.2v2.7h-5.2zM1 -10.5h5.2v2.7h-5.2zM-1 -9.8h2v.8h-2z')}</g>`
+// The mascot seen from the side, facing left, as it lies on the lounger:
+// thinner than it is wide, one arm on its near side, two legs, and its
+// sunglasses' near lens and arm.
+const M_SIDE = `${clay('M-4 -13h8v10h-8zM-3 -3h1v3h-1zM2 -3h1v3h-1z')}<path d="M-1 -9h2v2h-2z" fill="#a9654b"/><path d="M-3.5 -7h2v1h-2z" fill="#e29a8f"/>${inked('M-4.3 -10.5h3.4v2.7h-3.4zM-.9 -10h3v.6h-3z')}`
 const M_DRINK = `<g class="lsip" opacity="0"><circle cx="10.6" cy="-8.4" r="2" fill="#6b4c2f"/><path d="M11 -10.2v-2.4l-2 -1.2" stroke="#fff" stroke-width=".5" fill="none" stroke-linejoin="round"/></g>`
 // Its face asleep, and what drifts up from it then. The face lies down with
 // the rest of it; the letters stay upright.
@@ -746,9 +1094,9 @@ const M_SNORE = `<g class="lnap" opacity="0">${[0, 1.6].map(d => `<path class="m
 // How it lies in the hammock: on its side, head to the right, sunk into the
 // cloth.
 const M_LYING = 'translate(-6.5px,-8px) rotate(90deg)'
-// How it lies on the lounger: on its side along the cushion, head to the
-// right and raised on the backrest.
-const M_RECLINE = 'translate(-13.8px,-7.4px) rotate(84deg)'
+// How it lies on the lounger, seen from the side: on its back along the
+// cushion, feet to the left and head raised on the backrest.
+const M_RECLINE = 'translate(-12.6px,-3.7px) rotate(74deg)'
 
 // A stretch of a run, in seconds from its start.
 type Span = readonly [number, number]
@@ -940,17 +1288,21 @@ function rider(flag: Flag): string {
 // stretches it walks and its legs at rest on the others.
 // `lie` holds the attributes that turn it upright from lying down, where it
 // sets out from the hammock or the lounger.
-function walker(gait: string, rest: string, lie = ''): string {
-  return `<g transform="scale(2.4)"><g ${lie}>${clay(M_BODY + M_ARM_L + M_ARM_R)}<g ${rest}>${clay(M_LEGS_A + M_LEGS_B)}</g><g ${gait} opacity="0">${M_STEPPING}</g>${M_FACE}</g></g>`
+// Getting off the lounger it starts side on: `turn` then holds the attributes
+// of its front and its side as it turns to face the front.
+function walker(gait: string, rest: string, lie = '', turn?: { front: string; side: string }): string {
+  const figure = `${clay(M_BODY + M_ARM_L + M_ARM_R)}<g ${rest}>${clay(M_LEGS_A + M_LEGS_B)}</g><g ${gait} opacity="0">${M_STEPPING}</g>${M_FACE}`
+  const body = turn === undefined ? figure : `<g ${turn.front} transform="scale(0 1)">${figure}</g><g ${turn.side}>${M_SIDE}</g>`
+  return `<g transform="scale(2.4)"><g ${lie}>${body}</g></g>`
 }
 
 // The mascot living its day on the island: one figure whose stepping legs,
 // rod, shades, drink and sleeping face each show for their part of that day,
 // and which lies on its side while it naps.
 function islander(): string {
-  return `<g transform="scale(2.4)"><g class="la"><g class="llie">${M_ROD}${clay(M_BODY + M_ARM_L)}<g class="lan">${clay(M_ARM_R)}</g><g class="law" opacity="0"><g class="mwave">${clay(M_ARM_UP)}</g></g>
+  return `<g transform="scale(2.4)"><g class="la"><g class="llie"><g class="lfr">${M_ROD}${clay(M_BODY + M_ARM_L)}<g class="lan">${clay(M_ARM_R)}</g><g class="law" opacity="0"><g class="mwave">${clay(M_ARM_UP)}</g></g>
 <g class="lrest">${clay(M_LEGS_A + M_LEGS_B)}</g><g class="lgait" opacity="0">${M_STEPPING}</g>
-<g class="lawake">${M_FACE}</g>${M_ASLEEP}${M_SHADES}${M_DRINK}</g>${M_SNORE}</g></g>`
+<g class="lawake">${M_FACE}</g>${M_ASLEEP}${M_DRINK}</g><g class="lsd" transform="scale(0 1)">${M_SIDE}</g></g>${M_SNORE}</g></g>`
 }
 
 // The CSS of the mascot's day: where it is, which of its parts show while it
@@ -974,14 +1326,30 @@ function dayCss(day: Day, rand: () => number, greets: boolean, isPlain: boolean)
   const idle = during(doing => doing === 'stand').filter(([from, to]) => to - from >= 3)
   // It turns onto its side as it climbs into the hammock or onto the lounger,
   // and upright again as it climbs out.
+  // Onto the lounger it first turns side on, then lies back; off it, it sits
+  // up and then turns to face the front again.
   const poses: Record<string, number[]> = { none: [0, span], [M_LYING]: [], [M_RECLINE]: [] }
+  const facing: { front: [number, number][]; side: [number, number][] } = { front: [], side: [] }
   steps.forEach((step, i) => {
     const pose = step.doing === 'nap' ? M_LYING : step.doing === 'sun' ? M_RECLINE : undefined
+    const a = steps[i - 2]?.until ?? 0
+    const b = steps[i - 1]?.until ?? 0
+    const d = steps[i + 1]?.until ?? span
+    if (pose === M_RECLINE) {
+      const on = b - a
+      const off = d - step.until
+      poses.none?.push(a + 0.4 * on, step.until + 0.6 * off)
+      facing.front.push([a, 1], [a + 0.2 * on, 0], [step.until + 0.8 * off, 0], [d, 1])
+      facing.side.push([a + 0.2 * on, 0], [a + 0.4 * on, 1], [step.until + 0.6 * off, 1], [step.until + 0.8 * off, 0])
+    } else if (pose !== undefined) {
+      poses.none?.push(a, d)
+    }
     if (pose !== undefined) {
-      poses.none?.push(steps[i - 2]?.until ?? 0, steps[i + 1]?.until ?? span)
-      poses[pose]?.push(steps[i - 1]?.until ?? 0, step.until)
+      poses[pose]?.push(b, step.until)
     }
   })
+  const turned = (name: string, stops: [number, number][]): string =>
+    stops.length === 0 ? '' : `@keyframes ${name}{${stops.map(([at, x]) => `${pct(at, span)}{transform:scaleX(${x})}`).join('')}}.${name}{animation:${name} ${clock('ease-in-out')}}`
   const stops = (times: readonly number[]): string => [...new Set(times.map(at => pct(at, span)))].join()
   const held = Object.entries(poses).filter(([, times]) => times.length > 0)
   const lies = held.length < 2 ? '' : `@keyframes llie{${held.map(([pose, times]) => `${stops(times)}{transform:${pose}}`).join('')}}.llie{animation:llie ${clock('ease-in-out')}}`
@@ -996,8 +1364,8 @@ function dayCss(day: Day, rand: () => number, greets: boolean, isPlain: boolean)
   }, HOME)
   const front = `${shownIn('lfront', outside(before, span), span)}.lfront{animation:lfront ${clock('step-end')}}`
   return `${front}@keyframes lpos{0%{transform:translate(${HOME.x}px,${HOME.y}px)}${place}}.lpos{animation:lpos ${clock('ease-in-out')}}
-${part('lgait', doing => doing === 'walk')}${part('lrest', doing => doing !== 'walk')}${part('lrod', doing => doing === 'fish')}${part('lnap', doing => doing === 'nap')}${part('lawake', doing => doing !== 'nap')}${part('lsun', doing => doing === 'sun')}${part('lsip', doing => doing === 'sip')}
-${lies}${isPlain ? '' : anticsCss('la', clock, idle, span, rand, greets, 7)}`
+${part('lgait', doing => doing === 'walk')}${part('lrest', doing => doing !== 'walk')}${part('lrod', doing => doing === 'fish')}${part('lnap', doing => doing === 'nap')}${part('lawake', doing => doing !== 'nap')}${part('lsip', doing => doing === 'sip')}
+${lies}${turned('lfr', facing.front)}${turned('lsd', facing.side)}${isPlain ? '' : anticsCss('la', clock, idle, span, rand, greets, 7)}`
 }
 
 // The attributes of a group that plays keyframes `name` once over `span`
@@ -1095,9 +1463,20 @@ function wakeOf(name: string, legs: readonly Leg[], span: number): string {
 }
 
 // Keyframes that turn a boat about wherever its course changes heading.
-function facing(name: string, points: readonly [number, number][], span: number): string {
-  const frames = points.map(([at, scale]) => `${pct(at, span)}{transform:scaleX(${f(scale)})}`).join('')
-  return `@keyframes ${name}{${frames}100%{transform:scaleX(${f(points[points.length - 1]?.[1] ?? 1)})}}`
+// Keyframes that follow the boat's facing through `points` ([seconds,
+// scaleX]) as `as` turns each facing into a transform. The midpoint of each
+// turn, where it is seen bow on, is kept as a keyframe of its own.
+function facing(name: string, points: readonly [number, number][], span: number, as: (side: number) => string): string {
+  const all: [number, number][] = []
+  points.forEach(([at, side], i) => {
+    const last = points[i - 1]
+    if (last !== undefined && last[1] * side < 0) {
+      all.push([last[0] + ((at - last[0]) * last[1]) / (last[1] - side), 0])
+    }
+    all.push([at, side])
+  })
+  const frames = all.map(([at, side]) => `${pct(at, span)}{transform:${as(side)}}`).join('')
+  return `@keyframes ${name}{${frames}100%{transform:${as(all[all.length - 1]?.[1] ?? 1)}}}`
 }
 
 // How long the captain's antics run before they come round again.
@@ -1112,20 +1491,33 @@ const LEAD_BOAT: Boat = { kind: 'lead', slot: 0, from: 'R', pass: 'under', born:
 // boats, `late` the mascot drawn over the boats while it is on deck or
 // hopping between deck and jetty. `isPlain` leaves out the antics, for a
 // scene short of room.
-function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { boat: string; early: string; late: string; css: string } {
+function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { boat: string; depth: (later: number) => number; x: (later: number) => number; sails: number; early: string; late: string; css: string } {
   const t = seconds - voyage.at / 1000
   const plan = planOf(voyage)
   const rand = scatter(voyage.at)
   const faces = faceCss(rand)
   const route = routeOf(LEAD_BOAT)
-  const hull = (captain: string | undefined, wake?: string): string => `<g transform="scale(${route.scale})"><g class="boat">${leadBoat(flag, captain, wake)}</g></g>`
+  const hull = (wake?: string): string => `<g transform="scale(${route.scale})"><g class="boat">${leadBoat(flag, wake)}</g></g>`
   // The boat on a course of its own, turning about as the course does.
   const turning = turns(plan.boat, voyage.facing)
+  // How near the boat sails `later` seconds from now, for painting it among
+  // the fleet: along its course, then on its circuit.
+  const isCoursing = (at: number): boolean => plan.boat.length > 0 && at < (voyage.phase === 'fetch' ? plan.settled : plan.gone)
+  const depth = (later: number): number =>
+    isCoursing(t + later) ? along(plan.boat, t + later).y : voyage.phase === 'fetch' ? circuitAt(t + later - plan.settled).y : route.cy
+  // And where across the view it is: along its course, round its circuit,
+  // moored, or gone.
+  const x = (later: number): number =>
+    isCoursing(t + later) ? along(plan.boat, t + later).x : voyage.phase === 'fetch' ? circuitAt(t + later - plan.settled).x : t + later < plan.gone ? DOCK.x : -9999
+  const sails = Math.max(0, (voyage.phase === 'fetch' ? plan.settled : plan.gone) - t)
   const under = (span: number, captain: string | undefined): { svg: string; css: string } => {
     const now = along(plan.boat, t)
+    const side = facingAt(turning, t)
+    const bow = bowOf(LEAD_BOAT, route.scale, `${once('vbb', span, t)} transform="scale(${f(1 - Math.abs(side))} 1)"`)
+    const crew = captain === undefined ? '' : crewOf(flag, route.scale, captain, `${once('vbr', span, t)} transform="translate(${f(-20 * side)} 0)"`)
     return {
-      css: `${track('vbp', plan.boat, span)}${facing('vbf', turning, span)}${wakeOf('vbw', plan.boat, span)}`,
-      svg: tracked('vbp', span, t, now, `<g ${once('vbf', span, t)} transform="scale(${f(facingAt(turning, t))} 1)">${hull(captain, once('vbw', span, t))}</g>`),
+      css: `${track('vbp', plan.boat, span)}${facing('vbf', turning, span, s => `scaleX(${f(s)})`)}${facing('vbb', turning, span, s => `scaleX(${f(1 - Math.abs(s))})`)}${facing('vbr', turning, span, s => `translateX(${f(-20 * s)}px)`)}${wakeOf('vbw', plan.boat, span)}`,
+      svg: tracked('vbp', span, t, now, `<g ${once('vbf', span, t)} transform="scale(${f(side)} 1)">${hull(once('vbw', span, t))}</g>${bow}${crew}`),
     }
   }
   // The mascot on foot along its course, its legs stepping only where it
@@ -1145,11 +1537,16 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
     const getsUp = lying === undefined ? undefined : plan.clawd[0]
     const pose = lying === 'hammock' ? M_LYING : M_RECLINE
     const lie = getsUp === undefined ? '' : once('vlie', span, t)
-    const sitsUp = getsUp === undefined ? '' : `@keyframes vlie{0%,${pct(getsUp.from, span)}{transform:${pose};animation-timing-function:ease-in-out}${pct(getsUp.to, span)},100%{transform:none}}`
-    const walking = tracked('vcp', span, t, now, walker(stepped('vgo', span, t), stepped('vst', span, t), lie))
+    const upAt = getsUp === undefined ? 0 : lying === 'lounger' ? getsUp.from + 0.6 * (getsUp.to - getsUp.from) : getsUp.to
+    const sitsUp = getsUp === undefined ? '' : `@keyframes vlie{0%,${pct(getsUp.from, span)}{transform:${pose};animation-timing-function:ease-in-out}${pct(upAt, span)},100%{transform:none}}`
+    const turnAt = getsUp === undefined ? 0 : getsUp.from + 0.8 * (getsUp.to - getsUp.from)
+    const turnsFront = getsUp !== undefined && lying === 'lounger'
+    const turnsCss = !turnsFront ? '' : `@keyframes vfr{0%,${pct(turnAt, span)}{transform:scaleX(0)}${pct(getsUp.to, span)},100%{transform:scaleX(1)}}@keyframes vsd{0%,${pct(upAt, span)}{transform:scaleX(1)}${pct(turnAt, span)},100%{transform:scaleX(0)}}`
+    const turn = turnsFront ? { front: once('vfr', span, t), side: once('vsd', span, t) } : undefined
+    const walking = tracked('vcp', span, t, now, walker(stepped('vgo', span, t), stepped('vst', span, t), lie, turn))
     const figure = lying === 'hammock' ? `<g clip-path="url(#hung)">${walking}</g>` : walking
     return {
-      css: `${track('vcp', plan.clawd, span)}${sitsUp}${shownIn('vgo', strides, span, 0)}${shownIn('vst', outside(strides, span), span, 1)}${shownIn('vdk', deck, span, ends)}${shownIn('vsh', outside(deck, span), span, ends === 1 ? 0 : 1)}`,
+      css: `${track('vcp', plan.clawd, span)}${sitsUp}${turnsCss}${shownIn('vgo', strides, span, 0)}${shownIn('vst', outside(strides, span), span, 1)}${shownIn('vdk', deck, span, ends)}${shownIn('vsh', outside(deck, span), span, ends === 1 ? 0 : 1)}`,
       back: `<g ${stepped('vsh', span, t)}${isAtDeck ? ' opacity="0"' : ''}>${figure}</g>`,
       front: `<g ${stepped('vdk', span, t)}${isAtDeck ? '' : ' opacity="0"'}>${figure}</g>`,
     }
@@ -1161,14 +1558,17 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   const antics = isPlain ? '' : anticsCss('ca', timing => `${CAPTAIN_S}s ${timing} ${PHASE} infinite`, [[0, CAPTAIN_S]], CAPTAIN_S, scatter(CAPTAIN_S), false, 11, acts)
   if (voyage.phase === 'fetch') {
     const circuit = `<g style="--u:${route.seconds}s;--b:${f(t - plan.settled + CIRCUIT_START)};--r:${route.rx}px;--q:${route.ry}px;--d:0" transform="translate(${route.cx} ${route.cy})">
-<g class="bx"><g class="by"><g class="bf">${hull('')}</g></g></g></g>`
+<g class="bx"><g class="by"><g class="bf">${hull()}</g>${bowOf(LEAD_BOAT, route.scale, 'class="bw"')}${crewOf(flag, route.scale, '', 'class="br"')}</g></g></g>`
     if (t >= plan.settled) {
-      return { boat: circuit, early: '', late: '', css: faces + antics }
+      return { boat: circuit, depth, x, sails: 0, early: '', late: '', css: faces + antics }
     }
     const isAboard = voyage.aboard || t >= plan.boards
     const course = under(plan.settled, isAboard ? '' : `${once('vshow', plan.boards, t)} opacity="0"`)
     const foot = isAboard ? { back: '', front: '', css: '' } : onFoot(plan.boards)
     return {
+      depth,
+      x,
+      sails,
       boat: `<g ${once('vhide', plan.settled, t)}>${course.svg}</g><g ${once('vshow', plan.settled, t)} opacity="0">${circuit}</g>`,
       early: isAboard ? '' : `<g ${once('vhide', plan.boards, t)}>${foot.back}</g>`,
       late: isAboard ? '' : `<g ${once('vhide', plan.boards, t)}>${foot.front}</g>`,
@@ -1194,17 +1594,79 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
     .join('')
   const css = faces + dayCss(day, rand, voyage.greet, isPlain) + course.css + (isRiding && calms !== '' ? antics + calms : '')
   if (isHome) {
-    return { boat: course.svg, early: life, late: '', css }
+    return { boat: course.svg, depth, x, sails, early: life, late: '', css }
   }
   const foot = onFoot(plan.settled)
   const ashore = (figure: string): string => `<g ${once('vhide', plan.settled, t)}>${isRiding ? `<g ${once('vshow', plan.lands, t)} opacity="0">${figure}</g>` : figure}</g>`
   return {
+    depth,
+    x,
+    sails,
     boat: course.svg,
     early: `<g ${once('vshow', plan.settled, t)} opacity="0">${life}</g>${ashore(foot.back)}`,
     late: ashore(foot.front),
     css: css + foot.css,
   }
 }
+
+// A little crab on the wet sand at the front of the beach. It scuttles
+// sideways from one spot to the next, rests a while, and now and then waves
+// its claws. Its wanderings are one long, irregular round that takes its phase
+// from the wall clock, so it is always somewhere on the sand and a redraw
+// finds it where it was.
+const CRAB_HOME = { x: 1522, y: 747 }
+const CRAB = (() => {
+  const [lo, hi] = [1480, 1566]
+  const pace = 16
+  type Stretch = { from: number; to: number; x: number; walks: boolean; waves: boolean }
+  const stretches: Stretch[] = []
+  let t = 0
+  let x = CRAB_HOME.x
+  for (let i = 0; i < 9; i++) {
+    const rest = 3 + rnd(i, 401) * 10
+    stretches.push({ from: t, to: t + rest, x, walks: false, waves: rnd(i, 409) < 0.45 })
+    t += rest
+    let next = i === 8 ? CRAB_HOME.x : lo + rnd(i, 403) * (hi - lo)
+    if (i < 8 && Math.abs(next - x) < 16) {
+      next = x + (x < (lo + hi) / 2 ? 1 : -1) * (16 + rnd(i, 407) * 30)
+    }
+    const walk = Math.abs(next - x) / pace + 0.3
+    stretches.push({ from: t, to: t + walk, x: next, walks: true, waves: false })
+    t += walk
+    x = next
+  }
+  const whole = Math.round(t * 10) / 10
+  const at = (sec: number): string => f((sec / whole) * 100)
+  // Sideways, eased into and out of each scuttle: the round's easing applies
+  // between each pair of keys, and a rest holds still between its two.
+  let across = ''
+  let gait = ''
+  let still = ''
+  let claws = `0%{transform:rotate(0)}`
+  let before = CRAB_HOME.x
+  for (const run of stretches) {
+    if (run.walks) {
+      across += `${at(run.from)}%{transform:translateX(${Math.round(before - CRAB_HOME.x)}px)}${at(run.to)}%{transform:translateX(${Math.round(run.x - CRAB_HOME.x)}px)}`
+      gait += `${at(run.from)}%{opacity:1}${at(run.to)}%{opacity:0}`
+      still += `${at(run.from)}%{opacity:0}${at(run.to)}%{opacity:1}`
+    } else if (run.waves && run.to - run.from > 3) {
+      const mid = run.from + (run.to - run.from) * 0.4
+      claws += `${at(mid)}%{transform:rotate(0)}${at(mid + 0.35)}%{transform:rotate(-38deg)}${at(mid + 0.7)}%{transform:rotate(-24deg)}${at(mid + 1)}%{transform:rotate(-38deg)}${at(mid + 1.4)}%{transform:rotate(0)}`
+    }
+    before = run.x
+  }
+  const css = `@keyframes crx{0%{transform:translateX(0)}${across}100%{transform:translateX(0)}}@keyframes crg{0%{opacity:0}${gait}}@keyframes crs{0%{opacity:1}${still}}@keyframes crc{${claws}100%{transform:rotate(0)}}
+@keyframes crk{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
+.crx{${loop('crx', whole, 'ease-in-out')}}.crg{${loop('crg', whole, 'step-end')}}.crs{${loop('crs', whole, 'step-end')}}.crc{${loop('crc', whole, 'ease-in-out')}}.crk{${loop('crk', 0.3, 'linear')}}`
+  const side = '<path class="crl" d="M-4 -3l-5 -2l-2 4M-3 -2l-5 1l-1 4M-2 -1l-3 3l1 3"/>'
+  const legs = `${side}<g transform="scale(-1 1)">${side}</g>`
+  const claw = '<g transform="translate(-5 -6)"><g class="crc"><path class="crl" d="M0 0l-4 -4"/><path class="crb" d="M-4 -4q-5 -1 -4 -6q2 2 4 1q0 -3 2 -3q1 4 -2 8z"/></g></g>'
+  const svg = `<g transform="translate(${CRAB_HOME.x} ${CRAB_HOME.y})"><ellipse cy="1" rx="9" ry="1.6" class="sh"/><g class="crx">
+<g class="crs">${legs}</g><g class="crg"><g transform="translate(0 -3)"><g class="crk"><g transform="translate(0 3)">${side}</g></g><g class="crk" style="--d:.15"><g transform="translate(0 3)"><g transform="scale(-1 1)">${side}</g></g></g></g></g>
+<path class="crl" d="M-2 -7v-4M2 -7v-4"/><ellipse cy="-5" rx="7" ry="4.2" class="crb"/><circle cx="-2" cy="-11.5" r="1.2" fill="#2a1a12"/><circle cx="2" cy="-11.5" r="1.2" fill="#2a1a12"/>
+${claw}<g transform="scale(-1 1)">${claw}</g></g></g>`
+  return { svg, css }
+})()
 
 // The beach: a long spit of sand from its tip on the left out past the right
 // edge of the view. `grow` widens the outline, for the wet sand and the foam
@@ -1344,7 +1806,7 @@ export type SceneState = {
 }
 
 // What a surface takes as one scene, with room to spare.
-const ROOM = 127000
+export const ROOM = 127000
 
 // The scene as an SVG. One that comes out too long for a surface is drawn
 // again plainly: the boats' ways in fewer straight stretches, the mascot
@@ -1357,8 +1819,13 @@ export function scene(state: SceneState): string {
 function draw(state: SceneState, isPlain: boolean): string {
   const { mood, fireworks: show, isLeaping, scheme, seconds } = state
   const pair = trip(state.voyage, seconds, state.flag, isPlain)
-  const far = fleet(state.boats, true, seconds, state.flag, isPlain)
-  const near = fleet(state.boats, false, seconds, state.flag, isPlain)
+  const boats = fleets(state.boats, seconds, state.flag, isPlain)
+  // The near boats and the lead boat among them, painted far to near.
+  const lead: Part[] =
+    pair.boat === ''
+      ? []
+      : [{ svg: `<g id="v99">${pair.boat}</g>`, copy: '<use href="#v99"/>', depth: pair.depth(AHEAD_S), depthIn: pair.depth, xIn: pair.x, moving: Math.max(pair.sails, ...boats.near.map(part => part.moving)), ...LEAD_REACH }]
+  const around = stack([...boats.near, ...lead].sort((a, b) => a.depth - b.depth), 'zn')
 
   // The boardwalk and the water villas on it, level with each other.
   const pier = `<path class="post" stroke-width="7" stroke-linecap="round" d="M-20 566H600"/><path class="post" stroke-width="3" d="${[10, 170, 340, 500, 580].map(px => `M${px} 566v26`).join('')}"/>
@@ -1366,7 +1833,7 @@ ${bungalow(90, 563, 0.95)}${bungalow(255, 563, 1)}${bungalow(420, 563, 0.95)}`
   const isle = ISLE
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">
-<style>${styleFor(scheme)}${far.css}${near.css}${pair.css}</style>
+<style>${styleFor(scheme)}${CRAB.css}${boats.css}${pair.css}${around.css}</style>
 ${DEFS}
 <g class="${mood}" style="--t:${f(seconds % 100000)}">
 <rect width="${W}" height="${HORIZON + 2}" fill="url(#sky)"/>
@@ -1394,23 +1861,26 @@ ${coralReef(400, 850, 1.1, false, 71)}${coralReef(920, 852, 1, true, 77)}${coral
 ${seaLife()}
 <g><g class="wvs">${waves()}</g>${state.isCompacting ? WHIRLPOOL : ''}</g>
 <ellipse class="halo" cx="260" cy="570" rx="380" ry="70" fill="url(#halo)" opacity=".85"/>
-<g opacity=".18" class="reflit" filter="url(#soft)" transform="translate(0 1184) scale(1 -1)">${pier}</g>
-${pier}
+<g opacity=".18" class="reflit" filter="url(#soft)" transform="translate(0 1184) scale(1 -1)"><use href="#pier"/></g>
+<g id="pier">${pier}</g>
 <ellipse class="halo" cx="${isle + 90}" cy="705" rx="540" ry="135" fill="url(#halo)"/>
-<g>${far.svg}</g>
+<g>${boats.far.map(part => part.svg).join('')}</g>
+<path d="${beach(44)}" class="shoal" opacity=".75" filter="url(#blur6)"/>
 <path d="${beach(26)}" fill="none" class="foam foamline" stroke-width="2" opacity=".4" style="--d:4"/>
 <path d="${beach(13)}" fill="none" class="foam foamline" stroke-width="3" opacity=".75"/>
-<path d="${beach(5)}" class="wet"/><path d="${beach(0)}" fill="url(#sand)"/>
+<path d="${beach(7)}" class="wet"/><path d="${beach(0)}" fill="url(#sand)"/><path d="${beach(0)}" fill="url(#grain)" opacity=".5"/>
 ${JETTY_ART}
-<g><circle cx="${isle - 100}" cy="684" r="20" class="bush"/><circle cx="${isle - 78}" cy="676" r="24" class="bush2"/><circle cx="${isle + 90}" cy="680" r="22" class="bush"/><circle cx="${isle + 68}" cy="672" r="18" class="bush2"/></g>
-<path d="M${isle + 77} 708q-10 -28 0 -58q10 30 0 58z" fill="#ff9f43"/><path d="M${isle + 77} 706v-54" stroke="#fff" stroke-width="1.6"/>
+${TUFTS.map(([x, y, k]) => `<use href="#tuft" transform="translate(${x} ${y}) scale(${k})"/>`).join('')}
 ${star5(isle - 18, 743, 7)}${star5(isle + 178, 745, 6)}
-${palm(isle - 70, 686, 0.95, -30, 0)}${palm(isle + 20, 690, 1.15, 26, 2.2)}${palm(isle + 192, 682, 0.8, 44, 4.1)}
+${palm(isle + 192, 682, 0.8, 44, 4.1)}${palm(isle - 70, 686, 0.95, -30, 0)}${palm(isle + 20, 690, 1.15, 26, 2.2, true)}
+<use href="#shrub" transform="translate(${isle - 89} 703)"/><use href="#shrub" transform="translate(${isle + 80} 700) scale(-.82 .82)"/>
+<path d="M${isle + 77} 708q-10 -28 0 -58q10 30 0 58z" fill="#ff9f43"/><path d="M${isle + 77} 706v-54" stroke="#fff" stroke-width="1.6"/>
 ${BAR_ART}${LOUNGER_ART}
 ${pair.early}
 <g><path class="ham" d="M${isle - 75} 610Q${isle - 24} 668 ${isle + 23} 616Q${isle - 24} 642 ${isle - 75} 610Z"/><path d="M${isle - 75} 610Q${isle - 24} 657 ${isle + 23} 616" fill="none" stroke="#ef6f5e" stroke-width="2.2"/></g>
 ${FIRE_ART}
-<g>${pair.boat}${near.svg}${pair.late}</g>
+<g>${around.parts.map(part => part.svg).join('')}${pair.late}</g>
+${CRAB.svg}
 <g>${sparkles()}
 <g class="gulls"><g transform="translate(0 200)"><path class="gull wing" d="M0 0 q10 -10 20 0 q10 -10 20 0" fill="none" stroke-width="3"/></g>
 <g transform="translate(70 230)"><path class="gull wing" d="M0 0 q8 -8 16 0 q8 -8 16 0" fill="none" stroke-width="2.5" style="--d:.3"/></g>

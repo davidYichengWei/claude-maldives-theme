@@ -51,7 +51,7 @@ const AFT: Point = { x: DOCK.x - DECK, y: DOCK.y }
 const GATE_X: Record<Side, number> = { L: -110, R: 1710 }
 const LANE_Y: Record<Side, number> = { L: 770, R: 830 }
 // How long the boat takes to come about, and the mascot to hop on or off.
-export const TURN_S = 1.1
+export const TURN_S = 0.9
 const HOP_S = 0.8
 
 const EASE: Curve = [0.42, 0, 0.58, 1]
@@ -66,10 +66,10 @@ const EDGE_SPEED = 60
 // the way it sails.
 const LEAD: Boat = { kind: 'lead', slot: 0, from: 'R', pass: 'under', born: 0, gone: undefined }
 const LAP_S = ROUTES.lead[0]?.seconds ?? 100
-export const CIRCUIT_START = LAP_S * 0.54
+export const CIRCUIT_START = LAP_S * 0.515
 // How a circuit boat faces through its lap, as [share of the lap, scaleX]: it
 // comes about at either end. The scene's `of` keyframes say the same.
-const LAP_FACING: readonly [number, number][] = [[0, 0], [0.04, 1], [0.46, 1], [0.5, 0], [0.54, -1], [0.96, -1], [1, 0]]
+export const LAP_FACING: readonly [number, number][] = [[0, 0], [0.015, 1], [0.485, 1], [0.5, 0], [0.515, -1], [0.985, -1], [1, 0]]
 
 // Scatter in [0, 1) that is the same for the same seed: what the mascot does
 // is drawn from it, so each trip has a day of its own that every redraw

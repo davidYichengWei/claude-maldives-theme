@@ -30,7 +30,9 @@ if out=$(npx -y -p typescript@5.6.3 tsc -p "$repo" --noEmit 2>&1); then ok "plug
 if out=$(npm run -s size 2>&1); then
   busiest=$(echo "$out" | sed -n 's/.*busiest fetch \([0-9]*\) busiest land \([0-9]*\).*/\1 \2/p')
   top=$(echo "$busiest" | tr ' ' '\n' | sort -n | tail -1)
-  if [ -n "$top" ] && [ "$top" -le 127000 ]; then ok "busiest scene $top chars (plain redraw above 127000, app limit 131072)"; else no "busiest scene ${top:-?} chars is over 127000: it is drawn plainly" "trim the scene, or accept the plain redraw"; fi
+  if [ -z "$top" ] || [ "$top" -gt 131072 ]; then no "busiest scene ${top:-?} chars is over the app limit 131072" "trim the scene"
+  elif [ "$top" -gt 127000 ]; then ok "busiest scene $top chars, under the app limit 131072 (drawn plainly: over 127000)"
+  else ok "busiest scene $top chars (plain redraw above 127000, app limit 131072)"; fi
 else
   no "scene does not build: $(echo "$out" | head -1)" "npm run size, and fix what it reports"
 fi

@@ -5,6 +5,8 @@
 #   verify/run.sh [--film] <scenario.json>...   named scenarios
 #   verify/run.sh --random <count> [seed]       random combinations of events
 #
+# VERIFY_JOBS sets how many scenarios are filmed at once (8 by default).
+#
 # Exits 2 when any check found a fault, 1 when something could not run.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -30,15 +32,25 @@ else
     dirs+=("$out")
   done
 fi
-faults=0
+# Each scenario is filmed in its own Chromium, several at once. A film's
+# output is kept in its directory and printed in order once all are done.
+jobs_max=${VERIFY_JOBS:-8}
 for d in "${dirs[@]}"; do
-  node verify/film.cjs "$d" ${film[@]+"${film[@]}"} 2>&1 | grep -v "Skipping host requirements"
-  case ${PIPESTATUS[0]} in
+  while [ "$(jobs -rp | wc -l)" -ge "$jobs_max" ]; do sleep 0.2; done
+  ( node verify/film.cjs "$d" ${film[@]+"${film[@]}"} > "$d/film.log" 2>&1; echo $? > "$d/film.code" ) &
+done
+wait
+faults=0
+broken=0
+for d in "${dirs[@]}"; do
+  grep -v "Skipping host requirements" "$d/film.log"
+  case $(cat "$d/film.code" 2>/dev/null) in
     0) ;;
     2) faults=$((faults + 1)) ;;
-    *) echo "film.cjs could not run on $d" >&2; exit 1 ;;
+    *) echo "film.cjs could not run on $d" >&2; broken=1 ;;
   esac
 done
+[ "$broken" -eq 0 ] || exit 1
 echo
 echo "${#dirs[@]} scenarios checked, $faults with faults. Reports: */report.md under:"
 printf '  %s\n' "${dirs[@]}"

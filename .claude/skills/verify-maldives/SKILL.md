@@ -54,6 +54,11 @@ verify/run.sh --film verify/scenarios/fetch.json   # also save every frame + she
 verify/run.sh --random 12 7                        # 12 random mixes, seed 7 (reproducible)
 ```
 
+Scenarios are filmed several at once, each in its own Chromium (8 by
+default, `VERIFY_JOBS=n` to change). A named run takes about 1.5 minutes
+and a random seed of 12 about 50 seconds, so a regression of every named
+scenario and seeds 58, 31 and 7 takes about 3 minutes.
+
 A scenario is JSON:
 
 ```json
@@ -83,6 +88,7 @@ Each run writes `dev/verify/out/<name>-<stamp>/` (kept, git-ignored):
 
 - `report.md` / `report.json`: faults with the second and the frame image,
   notes (accepted behaviour, see below), and the event list.
+- `film.log` / `film.code`: what `film.cjs` printed and its exit code.
 - `sources/NNN.svg`: every scene handed to the app; `story.json` says when,
   why (`cause`) and the voyage it was drawn from.
 - `frames/`: flagged frames, and `seamNNN-before/after.png` for each flagged
@@ -98,8 +104,10 @@ What the checks catch:
 | --- | --- |
 | clawd shown once | Clawd missing or drawn twice (both walker and rider, say) |
 | ashore behind a boat | Clawd on the island painted over a boat passing in front |
+| boat under a farther boat | a nearer boat (lower on screen) painted beneath a farther one it overlaps (each measured by the parts of it that show: a hidden glow or a faded wake does not count) |
 | clawd jumped / height changed (frames) | teleports and pose snaps inside one scene |
-| lead boat jumped / width changed / appeared mid-water | boat flips and pops |
+| lead boat jumped / width changed / appeared mid-water | boat flips and pops (followed by its hull alone) |
+| `<kind><slot>` boat jumped / changed width | a fleet boat that skips, in a scene or across a seam |
 | seam: any jump or shape change | discontinuity where one scene replaces the next |
 | seam: picture changed on `ask`/`reload` | a refresh that restarts or drops a one-shot (fireworks, leap) |
 | size | a scene over the app's limit |

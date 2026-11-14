@@ -1,0 +1,7 @@
+{
+  "about": "Fishing boats and dinghies set out and are called home over one another, as in /maldives shells 3, crew 4, crew 0",
+  "start": { "mood": "idle", "home": 600 },
+  "events": [[0, "turn"], [2, "/maldives shells 3"], [6, "/maldives crew 4"], [40, "/maldives crew 0"], [55, "/maldives crew 3"], [70, "/maldives shells 0"], [85, "/maldives crew 1"], [95, "/maldives shells 2"]],
+  "askEvery": 7,
+  "frames": { "from": 0, "to": 130, "every": 0.5 }
+}

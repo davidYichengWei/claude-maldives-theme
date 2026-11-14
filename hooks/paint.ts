@@ -5,9 +5,9 @@
 // afresh would play that moment over.
 
 import type { Mood, Need } from '../types'
-import { ENTER_S, LEAVE_S } from './fleet'
+import { ENTER_S, LEAVE_S, roams } from './fleet'
 import type { Boat } from './fleet'
-import { HOIST_S, scene } from './scene'
+import { HOIST_S, ROOM, roamSpan, scene } from './scene'
 import type { Signal } from './scene'
 import { planOf } from './voyage'
 import type { Voyage } from './voyage'
@@ -15,8 +15,10 @@ import type { Voyage } from './voyage'
 // What is on screen: the scene as drawn, the key it was drawn for, and the key
 // it comes to rest at once its one-shot animations (a leap, fireworks, a boat
 // sailing off, a change of flag) have played out.
-export type Painted = { key: string; rest: string; source: string; built: number; until: number }
-export const UNPAINTED: Painted = { key: '', rest: '', source: '', built: 0, until: 0 }
+// `renew` is when the scene has run past the time it worked out roaming
+// boats' order for, and must be drawn again; 0 when none roam.
+export type Painted = { key: string; rest: string; source: string; built: number; until: number; renew: number }
+export const UNPAINTED: Painted = { key: '', rest: '', source: '', built: 0, until: 0, renew: 0 }
 
 // What the lead boat flies, what it flew before, and when it changed.
 // `hailedAt` is when the boat last began calling for the person, so that the
@@ -83,7 +85,7 @@ export function paint(drawn: Painted, picture: Picture, now: number): Painted {
     isLeaping ? leapUntil : 0,
     ...fleet.map(boat => (boat.gone === undefined ? boat.born + ENTER_S * 1000 : boat.gone + LEAVE_S * 1000)),
   )
-  const isStale = drawn.built < drawn.until && now - drawn.built > REFRESH_MS
+  const isStale = (drawn.built < drawn.until && now - drawn.built > REFRESH_MS) || (drawn.renew > 0 && now >= drawn.renew)
   // A scene whose one-shots have finished already looks like the state it
   // settles into, and is kept.
   if (key === drawn.rest && !isStale) {
@@ -92,21 +94,26 @@ export function paint(drawn: Painted, picture: Picture, now: number): Painted {
   if (key === drawn.key && !isStale) {
     return drawn
   }
+  const source = scene({
+    mood,
+    boats: fleet,
+    flag: { from: isHoisting ? flag.from : flag.to, to: flag.to, age: (now - flag.since) / 1000, hailed: (now - flag.hailedAt) / 1000 },
+    voyage: trip,
+    isCompacting,
+    isLeaping,
+    fireworks: isCelebrating ? (now - firedAt) / 1000 : undefined,
+    scheme,
+    seconds: now / 1000,
+  })
+  // Roaming boats are painted in an order worked out for a while ahead; the
+  // scene is drawn again a little before that runs out.
+  const isRoaming = fleet.some(boat => boat.gone === undefined && roams(boat))
   return {
     key,
     rest: `${steady}||0|0|0`,
     built: now,
     until,
-    source: scene({
-      mood,
-      boats: fleet,
-      flag: { from: isHoisting ? flag.from : flag.to, to: flag.to, age: (now - flag.since) / 1000, hailed: (now - flag.hailedAt) / 1000 },
-      voyage: trip,
-      isCompacting,
-      isLeaping,
-      fireworks: isCelebrating ? (now - firedAt) / 1000 : undefined,
-      scheme,
-      seconds: now / 1000,
-    }),
+    renew: isRoaming ? now + (roamSpan(source.length > ROOM) - 5) * 1000 : 0,
+    source,
   }
 }

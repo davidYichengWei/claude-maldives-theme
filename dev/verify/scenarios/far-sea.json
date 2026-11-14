@@ -1,0 +1,36 @@
+{
+ "about": "Every boat out, roaming its water near and far across several redraws, then all called home",
+ "start": {
+  "mood": "idle",
+  "home": 600
+ },
+ "scheme": "light",
+ "events": [
+  [
+   0,
+   "turn"
+  ],
+  [
+   1,
+   "/maldives crew 5"
+  ],
+  [
+   2,
+   "/maldives shells 5"
+  ],
+  [
+   120,
+   "/maldives crew 0"
+  ],
+  [
+   122,
+   "/maldives shells 0"
+  ]
+ ],
+ "askEvery": 7,
+ "frames": {
+  "from": 0,
+  "to": 140,
+  "every": 0.5
+ }
+}

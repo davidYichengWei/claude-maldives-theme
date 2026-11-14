@@ -1,0 +1,14 @@
+{
+  "name": "claude-maldives-theme",
+  "owner": {
+    "name": "davidYichengWei"
+  },
+  "description": "The Maldives lagoon theme for the Claude desktop app.",
+  "plugins": [
+    {
+      "name": "maldives",
+      "source": "./",
+      "description": "A Maldives lagoon theme for the Claude desktop app: an animated backdrop that follows what Claude is doing."
+    }
+  ]
+}

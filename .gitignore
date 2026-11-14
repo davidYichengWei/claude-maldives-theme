@@ -1,0 +1,7 @@
+.DS_Store
+*.log
+node_modules/
+.claude-plugin/types/
+dev/build/
+dev/*.svg
+dev/*.png

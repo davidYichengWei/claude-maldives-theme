@@ -1,0 +1,7 @@
+{
+  "about": "Clawd napping in the hammock, then on the lounger, called away by a turn each time",
+  "start": { "mood": "idle", "home": 600 },
+  "events": [[1, "/maldives island nap"], [22, "turn"], [40, "answer"], [80, "/maldives island sun"], [104, "turn"]],
+  "askEvery": 7,
+  "frames": { "from": 18, "to": 112, "every": 0.25 }
+}

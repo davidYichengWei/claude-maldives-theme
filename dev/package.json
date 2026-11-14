@@ -7,10 +7,14 @@
     "states": "esbuild gen.ts --bundle --platform=node --outfile=build/gen.cjs --log-level=warning && node build/gen.cjs",
     "frames": "esbuild frames.ts --bundle --platform=node --outfile=build/frames.cjs --log-level=warning && node build/frames.cjs && node render.cjs",
     "fleet": "esbuild muster-test.ts --bundle --platform=node --outfile=build/muster.cjs --log-level=warning && node build/muster.cjs",
-    "sides": "esbuild sides-lead.ts --bundle --platform=node --outfile=build/sides-lead.cjs --log-level=warning && node build/sides-lead.cjs && esbuild sides-fleet.ts --bundle --platform=node --outfile=build/sides-fleet.cjs --log-level=warning && node build/sides-fleet.cjs"
+    "sides": "esbuild sides-lead.ts --bundle --platform=node --outfile=build/sides-lead.cjs --log-level=warning && node build/sides-lead.cjs && esbuild sides-fleet.ts --bundle --platform=node --outfile=build/sides-fleet.cjs --log-level=warning && node build/sides-fleet.cjs",
+    "setup-chromium": "verify/setup-chromium.sh",
+    "doctor": "verify/doctor.sh",
+    "verify": "verify/run.sh"
   },
   "devDependencies": {
     "@resvg/resvg-js": "2.6.2",
-    "esbuild": "0.24.0"
+    "esbuild": "0.24.0",
+    "playwright-core": "1.48.2"
   }
 }

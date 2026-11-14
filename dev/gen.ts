@@ -6,7 +6,7 @@ import { writeFileSync } from 'fs'
 const NOW = 1234500
 const b = (kind: BoatKind, slot: number, ageS: number, goneAgoS?: number, from: Side = 'L', pass: Pass = 'under'): Boat => ({ kind, slot, from, pass, born: NOW - ageS * 1000, gone: goneAgoS === undefined ? undefined : NOW - goneAgoS * 1000 })
 import { AT_HOME, embark } from '../hooks/voyage'
-const base: SceneState = { mood: 'idle', flag: { from: 'none', to: 'none', age: 99 }, voyage: { ...AT_HOME, at: NOW - 3000000 }, boats: [], isCompacting: false, isLeaping: false, isCelebrating: false, scheme: undefined, seconds: NOW / 1000 }
+const base: SceneState = { mood: 'idle', flag: { from: 'none', to: 'none', age: 99 }, voyage: { ...AT_HOME, at: NOW - 3000000 }, boats: [], isCompacting: false, isLeaping: false, fireworks: undefined, scheme: undefined, seconds: NOW / 1000 }
 const out = embark({ ...AT_HOME, at: NOW - 900000 }, 'fetch', NOW - 70000, false)
 const back = embark(out, 'land', NOW - 4000, true)
 const all: Boat[] = [...[0, 1, 2, 3, 4].map(i => b('crew', i, 30 + i * 9)), ...[0, 1, 2, 3, 4].map(i => b('shell', i, 25 + i * 13))]
@@ -18,14 +18,14 @@ const states: Record<string, Partial<SceneState>> = {
   plan: { voyage: out, mood: 'waiting', flag: { from: 'none', to: 'plan', age: 99 } },
   error: { voyage: out, mood: 'error', flag: { from: 'none', to: 'error', age: 99 } },
   done: { voyage: back, mood: 'done', boats: [b('shell', 0, 33), b('crew', 0, 50, 5, 'L', 'under'), b('crew', 2, 50, 6.5, 'L', 'over'), b('crew', 3, 4, undefined, 'R', 'over')] },
-  fireworks: { voyage: out, mood: 'working', boats: all, isCompacting: true, isLeaping: true, isCelebrating: true },
+  fireworks: { voyage: out, mood: 'working', boats: all, isCompacting: true, isLeaping: true, fireworks: 2 },
   fleet: { voyage: out, mood: 'working', boats: [all[0]!, all[1]!, all[2]!, all[5]!, all[6]!, all[7]!] },
 }
 let max = 0
 for (const [name, patch] of Object.entries(states)) { const s = scene({ ...base, ...patch }); max = Math.max(max, s.length); writeFileSync(name + '.svg', s) }
 // Worst case for size: everything entering or leaving at once, mid-trip.
 const moving = [...[0, 1, 2, 3, 4].map(i => b('crew', i, 3)), ...[0, 1, 2, 3, 4].map(i => b('shell', i, 40, 2))]
-const extras = { boats: moving, isLeaping: true, isCelebrating: true, isCompacting: true }
+const extras = { boats: moving, isLeaping: true, fireworks: 2, isCompacting: true }
 const busyOut = scene({ ...base, ...extras, voyage: embark({ ...AT_HOME, at: NOW - 900000 }, 'fetch', NOW - 2000, false), mood: 'working' })
 const busyBack = scene({ ...base, ...extras, voyage: embark(out, 'land', NOW - 2000, true), mood: 'done' })
 console.log('max len', max, 'busiest fetch', busyOut.length, 'busiest land', busyBack.length, 'plain?', !busyOut.includes('@keyframes ca{'), !busyBack.includes('@keyframes la{'))

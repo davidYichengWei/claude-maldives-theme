@@ -3,7 +3,7 @@ import type { SceneState } from '../hooks/scene'
 import { AT_HOME, embark, planOf, dayOf, stageAt } from '../hooks/voyage'
 import { writeFileSync } from 'fs'
 const T0 = 5000000
-const base: SceneState = { mood: 'idle', flag: { from: 'none', to: 'none', age: 99 }, voyage: AT_HOME, boats: [], isCompacting: false, isLeaping: false, isCelebrating: false, scheme: undefined, seconds: T0 / 1000 }
+const base: SceneState = { mood: 'idle', flag: { from: 'none', to: 'none', age: 99 }, voyage: AT_HOME, boats: [], isCompacting: false, isLeaping: false, fireworks: undefined, scheme: undefined, seconds: T0 / 1000 }
 // A fetch that starts at T0 from an idle island, then a landing 60 s later.
 const idle = { ...AT_HOME, at: T0 - 300000 }
 const fetch = embark(idle, 'fetch', T0, false)

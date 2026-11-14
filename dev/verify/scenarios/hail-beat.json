@@ -1,0 +1,7 @@
+{
+  "about": "The boat starts and stops hailing with Clawd in mid-hop, and changes signal mid-beat, with refreshes between",
+  "start": { "mood": "working", "home": 600 },
+  "events": [[0, "turn"], [20, "permission"], [21.9, "resolve"], [26.5, "question"], [30.3, "plan"], [33.05, "resolve"], [35, "fail"], [36.8, "turn"], [40.2, "permission"], [42.1, "answer"]],
+  "askEvery": 3.1,
+  "frames": { "from": 18, "to": 50, "every": 0.25 }
+}

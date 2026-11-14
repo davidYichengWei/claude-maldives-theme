@@ -1,0 +1,7 @@
+{
+  "about": "Fireworks during a trip, with stale refreshes landing inside the show",
+  "start": { "mood": "idle", "home": 600 },
+  "events": [[0, "turn"], [3, "ship"], [9, "answer"]],
+  "askEvery": 2,
+  "frames": { "from": 2, "to": 16, "every": 0.25 }
+}

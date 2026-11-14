@@ -2,11 +2,11 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, ThemeSetArgs } from 'claude-code'
 
 import type { Mood, Need } from '../types'
-import { ENTER_S, LEAVE_S, muster } from './fleet'
+import { muster } from './fleet'
 import type { Boat } from './fleet'
 import { makeColors } from './make-colors.js'
-import { HOIST_S, scene } from './scene'
-import type { Signal } from './scene'
+import { FIREWORKS_MS, UNFLAGGED, UNPAINTED, hoist, paint, signalOf } from './paint'
+import type { Flag } from './paint'
 import { AT_HOME, DRILLS, embark, planOf } from './voyage'
 import type { Voyage } from './voyage'
 
@@ -121,28 +121,19 @@ function needOf(tool: string): Need {
 }
 
 async function celebrate($: EngineInterface): Promise<void> {
-  const token = (await read($, fireworks)) + 1
-  await update($, fireworks, () => token)
+  const firedAt = await $.clock.now()
+  await update($, fireworks, () => firedAt)
   $.ui.toast('Shipped 🎆')
-  $.clock.after(9000, async () => {
-    await update($, fireworks, n => (n === token ? 0 : n))
+  $.clock.after(FIREWORKS_MS, async () => {
+    await update($, fireworks, at => (at === firedAt ? 0 : at))
   })
 }
 
-function tagOf(boat: Boat): string {
-  return `${boat.kind}${boat.slot}@${boat.born}`
-}
-
 // What the lead boat flies, what it flew before, and when it changed.
-let flag: { from: Signal; to: Signal; since: number } = { from: 'none', to: 'none', since: 0 }
+let flag: Flag = UNFLAGGED
 
-// What is on screen: the scene as drawn, and the key it comes to rest at once
-// its one-shot animations (a leap, fireworks, a boat sailing off, a change of
-// flag) have played out.
-let drawn = { key: '', rest: '', source: '', built: 0, until: 0 }
-// A scene drawn while something in it was under way is drawn again if it is
-// asked for this long after.
-const REFRESH_MS = 3000
+// What is on screen.
+let drawn = UNPAINTED
 // How often the backdrop was asked for and how often it was drawn anew, for
 // `/maldives debug`.
 let tally = { asks: 0, builds: 0 }
@@ -332,62 +323,26 @@ export const register: Register = on => {
     const { Svg } = $.ui.resolve(e)
     const current = await read($, mood)
     const kind = await read($, need)
-    const isCompacting = await read($, compacting)
-    const isCelebrating = (await read($, fireworks)) > 0
-    const scheme = e.props.overrideColorScheme
     await read($, leap)
     const now = await $.clock.now()
-    const isLeaping = now < leapUntil
-    const signal: Signal = current === 'waiting' ? kind : current === 'error' ? 'error' : 'none'
-    if (signal !== flag.to) {
-      flag = { from: flag.to, to: signal, since: now }
-    }
-    const isHoisting = now < flag.since + HOIST_S * 1000
-    const trip = await read($, voyage)
-    const fleet = (await read($, boats)).filter(boat => boat.gone === undefined || now < boat.gone + LEAVE_S * 1000)
-    const out = fleet.filter(boat => boat.gone === undefined).map(tagOf).join()
-    const leaving = fleet.filter(boat => boat.gone !== undefined).map(boat => `${tagOf(boat)}>${boat.gone}`).join()
-    const steady = `${current}|${signal}|${trip.phase}@${trip.at}|${out}|${isCompacting}|${scheme}`
-    const key = `${steady}|${leaving}|${isCelebrating}|${isLeaping ? leapUntil : 0}|${isHoisting ? flag.since : 0}`
-    // When the last thing under way in this picture is over: the lead boat's
-    // trip, a boat's way in or out, a change of flag, a leap.
-    const plan = planOf(trip)
-    const until = Math.max(
-      trip.at + Math.max(plan.settled, plan.gone) * 1000,
-      flag.since + HOIST_S * 1000,
-      isLeaping ? leapUntil : 0,
-      ...fleet.map(boat => (boat.gone === undefined ? boat.born + ENTER_S * 1000 : boat.gone + LEAVE_S * 1000)),
+    flag = hoist(flag, signalOf(current, kind), now)
+    const before = drawn.built
+    drawn = paint(
+      drawn,
+      {
+        mood: current,
+        need: kind,
+        isCompacting: await read($, compacting),
+        firedAt: await read($, fireworks),
+        scheme: e.props.overrideColorScheme,
+        voyage: await read($, voyage),
+        boats: await read($, boats),
+        leapUntil,
+        flag,
+      },
+      now,
     )
-    tally = { ...tally, asks: tally.asks + 1 }
-    // A scene drawn while something was under way holds that moment, and a
-    // frame loaded afresh would play it over from there. So such a scene is
-    // drawn again when it is asked for a while later.
-    const isStale = drawn.built < drawn.until && now - drawn.built > REFRESH_MS
-    // Every new source reloads the frame, which shows as a flicker, so one is
-    // built only when the picture has to change. A scene whose one-shots have
-    // finished already looks like the state it settles into, and is kept.
-    if (key === drawn.rest && !isStale) {
-      drawn = { ...drawn, key }
-    } else if (key !== drawn.key || isStale) {
-      tally = { ...tally, builds: tally.builds + 1 }
-      drawn = {
-        key,
-        rest: `${steady}||false|0|0`,
-        built: now,
-        until,
-        source: scene({
-          mood: current,
-          boats: fleet,
-          flag: { from: isHoisting ? flag.from : flag.to, to: flag.to, age: (now - flag.since) / 1000 },
-          voyage: trip,
-          isCompacting,
-          isLeaping,
-          isCelebrating,
-          scheme,
-          seconds: now / 1000,
-        }),
-      }
-    }
+    tally = { asks: tally.asks + 1, builds: tally.builds + (drawn.built !== before ? 1 : 0) }
     return (
       <Svg
         source={drawn.source}

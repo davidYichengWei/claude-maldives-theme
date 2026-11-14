@@ -61,9 +61,15 @@ const DEPART: Curve = [0.45, 0, 0.7, 0.75]
 // brisker than its circuit, never in a rush.
 const EDGE_SPEED = 60
 
-// The lead boat's circuit, joined at its right-hand end heading left.
+// The lead boat's circuit. It is joined at its right-hand end heading left,
+// just past where the circuit comes about there, so the boat joins it facing
+// the way it sails.
 const LEAD: Boat = { kind: 'lead', slot: 0, from: 'R', pass: 'under', born: 0, gone: undefined }
-const JOIN: Point = { x: (ROUTES.lead[0]?.cx ?? 690) + (ROUTES.lead[0]?.rx ?? 150), y: ROUTES.lead[0]?.cy ?? 745 }
+const LAP_S = ROUTES.lead[0]?.seconds ?? 100
+export const CIRCUIT_START = LAP_S * 0.54
+// How a circuit boat faces through its lap, as [share of the lap, scaleX]: it
+// comes about at either end. The scene's `of` keyframes say the same.
+const LAP_FACING: readonly [number, number][] = [[0, 0], [0.04, 1], [0.46, 1], [0.5, 0], [0.54, -1], [0.96, -1], [1, 0]]
 
 // Scatter in [0, 1) that is the same for the same seed: what the mascot does
 // is drawn from it, so each trip has a day of its own that every redraw
@@ -189,6 +195,15 @@ function buildDay(seed: number, drill: Drill | undefined): Day {
   return { steps, span: t }
 }
 
+// What the mascot lies in at `at`, if anything: on its side in the hammock or
+// back on the lounger.
+export function lyingIn(at: Point): 'hammock' | 'lounger' | undefined {
+  if (gap(at, HAMMOCK) < 3) {
+    return 'hammock'
+  }
+  return gap(at, ON_LOUNGER) < 3 ? 'lounger' : undefined
+}
+
 // Whether `at` is on the lounger or on the sand in front of it, where the
 // mascot stands before the lounger rather than behind it.
 export function isByLounger(at: Point): boolean {
@@ -231,8 +246,9 @@ export function lifeAt(day: Day, seconds: number): Point {
 // and `clawd` are where the two were at that moment, the boat nowhere if it
 // was out of view, and `aboard` whether the mascot was on the boat. `greet`
 // marks a landing after a finished turn, `drill` a day asked for by hand,
-// and `exit` the edge the boat goes out by after a landing: on a fetch it
-// comes in by the edge it last went out by.
+// `exit` the edge the boat goes out by after a landing (on a fetch it comes
+// in by the edge it last went out by), and `facing` how the boat faced as the
+// trip began, as the scaleX it was drawn with.
 export type Voyage = {
   phase: 'fetch' | 'land'
   at: number
@@ -242,6 +258,7 @@ export type Voyage = {
   greet: boolean
   drill?: Drill
   exit?: Side
+  facing?: number
 }
 
 export const AT_HOME: Voyage = { phase: 'land', at: 0, boat: null, clawd: HOME, aboard: false, greet: false }
@@ -370,6 +387,23 @@ export function planOf(voyage: Voyage): Plan {
       const span = within(gap(start, JOIN) / 90, 2, 8)
       return { boat: [straight(0, span, start, JOIN, EASE, false)], clawd: [], boards: 0, lands: 0, gone: 0, settled: span }
     }
+    if (from !== null && gap(from, DOCK) < 1 && Math.abs(voyage.clawd.y - DOCK.y) < 2 && Math.abs(voyage.clawd.x - DOCK.x) <= DECK + 1) {
+      // Called back while still walking the deck to go ashore: it turns and
+      // walks back aft, and the boat sets out with it.
+      const heading = (voyage.facing ?? 1) < 0 ? -1 : 1
+      const seat = { x: DOCK.x - DECK * heading, y: DOCK.y }
+      const boards = 0.2 + Math.max(0.4, gap(voyage.clawd, seat) / 40)
+      const leaves = boards + 0.4
+      const settled = leaves + within(gap(DOCK, JOIN) / 70, 3, 6)
+      return {
+        boat: [moored(0, leaves, heading), straight(leaves, settled, DOCK, JOIN, EASE, false)],
+        clawd: [straight(0.2, boards, voyage.clawd, seat, EASE, true)],
+        boards,
+        lands: 0,
+        gone: 0,
+        settled,
+      }
+    }
     // The boat comes in, by the edge it last went out by when it was out of
     // view, and lies stern to the jetty while the mascot walks out to the
     // jetty's end and hops aboard.
@@ -428,29 +462,65 @@ export function along(legs: readonly Leg[], t: number): Point {
   return leg.at(within((t - leg.from) / Math.max(0.001, leg.to - leg.from), 0, 1))
 }
 
-export function headingAt(legs: readonly Leg[], t: number): 1 | -1 {
-  return (legs.find(one => t < one.to) ?? legs[legs.length - 1])?.heading ?? 1
+// How the boat faces along `legs`, as [seconds, scaleX] to pass through in
+// turn, evenly between: it comes about wherever its heading changes, from
+// however it faced as the trip began (`start`, part way round when it was
+// coming about then).
+export function turns(legs: readonly Leg[], start: number | undefined): [number, number][] {
+  let facing = start ?? legs[0]?.heading ?? 1
+  const out: [number, number][] = [[0, facing]]
+  for (const leg of legs) {
+    if (leg.heading !== facing) {
+      const from = Math.max(leg.from, out[out.length - 1]?.[0] ?? 0)
+      out.push([from, facing], [from + (TURN_S * Math.abs(leg.heading - facing)) / 2, leg.heading])
+      facing = leg.heading
+    }
+  }
+  return out
 }
 
-// Where the lead boat is on its circuit `seconds` after a fetch settled.
-export function circuitAt(seconds: number): Point {
-  return lapAt(LEAD, seconds)
+function between(points: readonly (readonly [number, number])[], at: number): number {
+  let last = points[0]
+  for (const point of points) {
+    if (at <= point[0]) {
+      return last === undefined || point[0] === last[0] ? point[1] : last[1] + ((point[1] - last[1]) * (at - last[0])) / (point[0] - last[0])
+    }
+    last = point
+  }
+  return last?.[1] ?? 1
 }
-export const CIRCUIT_START = (ROUTES.lead[0]?.seconds ?? 100) / 2
+
+export function facingAt(points: readonly [number, number][], t: number): number {
+  return between(points, t)
+}
+
+// Where the lead boat is on its circuit, and how it faces, `seconds` after a
+// fetch settled.
+export function circuitAt(seconds: number): Point {
+  return lapAt(LEAD, seconds + CIRCUIT_START - LAP_S / 2)
+}
+
+function circuitFacing(seconds: number): number {
+  return between(LAP_FACING, ((((seconds + CIRCUIT_START) / LAP_S) % 1) + 1) % 1)
+}
+
+const JOIN: Point = circuitAt(0)
 
 // Where the two are at clock time `now` (ms), for the next trip to start from.
-export function stageAt(voyage: Voyage, now: number): { boat: Point | null; clawd: Point; aboard: boolean } {
+export function stageAt(voyage: Voyage, now: number): { boat: Point | null; clawd: Point; aboard: boolean; facing: number | undefined } {
   const t = (now - voyage.at) / 1000
   const plan = planOf(voyage)
+  const course = (): number => facingAt(turns(plan.boat, voyage.facing), t)
   if (voyage.phase === 'fetch') {
-    const boat = t < plan.settled ? along(plan.boat, t) : circuitAt(t - plan.settled)
+    const isOnCircuit = t >= plan.settled
+    const boat = isOnCircuit ? circuitAt(t - plan.settled) : along(plan.boat, t)
     const aboard = voyage.aboard || t >= plan.boards
-    return { boat, aboard, clawd: aboard ? boat : along(plan.clawd, t) }
+    return { boat, aboard, clawd: aboard ? boat : along(plan.clawd, t), facing: isOnCircuit ? circuitFacing(t - plan.settled) : course() }
   }
   const boat = plan.boat.length > 0 && t < plan.gone ? along(plan.boat, t) : null
   const aboard = voyage.aboard && boat !== null && t < plan.lands
   const clawd = t >= plan.settled ? lifeAt(dayOf(voyage.at, voyage.drill), t - plan.settled) : along(plan.clawd, t)
-  return { boat, aboard, clawd }
+  return { boat, aboard, clawd, facing: boat === null ? undefined : course() }
 }
 
 // The trip that starts at `now` from wherever the last one had got to.

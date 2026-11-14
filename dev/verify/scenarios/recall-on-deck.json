@@ -1,0 +1,7 @@
+{
+  "about": "A landing cut short by a new turn while Clawd walks the deck to go ashore",
+  "start": { "mood": "working", "home": 600 },
+  "events": [[0, "turn"], [30, "answer"], [35.5, "turn"]],
+  "askEvery": 7,
+  "frames": { "from": 28, "to": 50, "every": 0.25 }
+}

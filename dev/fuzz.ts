@@ -3,7 +3,7 @@ import type { SceneState } from '../hooks/scene'
 import { AT_HOME, embark, planOf } from '../hooks/voyage'
 import type { Voyage } from '../hooks/voyage'
 import { writeFileSync } from 'fs'
-const base = (voyage: Voyage, now: number, mood: SceneState['mood']): SceneState => ({ mood, flag: { from: 'none', to: 'none', age: 99 }, voyage, boats: [], isCompacting: false, isLeaping: true, isCelebrating: false, scheme: 'dark', seconds: now / 1000 })
+const base = (voyage: Voyage, now: number, mood: SceneState['mood']): SceneState => ({ mood, flag: { from: 'none', to: 'none', age: 99 }, voyage, boats: [], isCompacting: false, isLeaping: true, fireworks: undefined, scheme: 'dark', seconds: now / 1000 })
 let r = 12345
 const rnd = (): number => { r = (r * 1103515245 + 12345) % 2147483648; return r / 2147483648 }
 const bad: string[] = []

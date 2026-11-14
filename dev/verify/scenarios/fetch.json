@@ -1,0 +1,6 @@
+{
+ "about": "A turn starts: the boat comes in, Clawd walks out along the jetty and hops aboard, the boat joins its circuit",
+ "start": { "mood": "idle", "home": 300 },
+ "events": [[2, "prompt"], [2, "turn"]],
+ "frames": { "from": 1, "to": 40, "every": 0.25 }
+}

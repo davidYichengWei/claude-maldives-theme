@@ -3,7 +3,7 @@
 import type { Mood, Need } from '../types'
 import { ENTER_X, LEAVE_X, enterSeconds, fixAt, lapAt, lapStart, leaveSeconds, routeOf, sailsBehind, whereabouts } from './fleet'
 import type { Boat, Point } from './fleet'
-import { BAR, BEACH_TIP, CIRCUIT_START, DOCK, FIRE, HOME, ISLE, JETTY, LOUNGER, TURN_S, along, dayOf, headingAt, isByLounger, lifeAt, planOf, scatter } from './voyage'
+import { BAR, BEACH_TIP, CIRCUIT_START, DOCK, FIRE, HOME, ISLE, JETTY, LOUNGER, along, dayOf, facingAt, isByLounger, lifeAt, lyingIn, planOf, scatter, turns } from './voyage'
 import type { Day, Doing, Leg, Voyage } from './voyage'
 
 const W = 1600
@@ -17,10 +17,14 @@ const SUN_Y = 212
 export type Signal = Need | 'error' | 'none'
 
 // The signal flown now, the one it replaced, and the seconds since the change.
-export type Flag = { from: Signal; to: Signal; age: number }
+// `hailed` is how long ago the boat began calling for the person, when that
+// differs from `age`.
+export type Flag = { from: Signal; to: Signal; age: number; hailed?: number }
 
 // How long one signal takes to give way to the next.
 export const HOIST_S = 1.6
+// One beat of the mascot's hailing hops.
+const HAIL_S = 2.4
 const HOIST = `${HOIST_S}s ease-in-out calc(var(--h,0) * -1s) 1 both`
 
 // Seconds between one leap of a dolphin pod and its next.
@@ -217,7 +221,6 @@ const STYLE = `
 .spA{transform-box:fill-box;transform-origin:center;${loop('splashA', LEAP_EVERY, 'linear')}}
 .pod{${loop('pod', LEAP_EVERY * 3, 'linear')}}
 .spB{transform-box:fill-box;transform-origin:center;${loop('splashB', LEAP_EVERY, 'linear')}}
-.mhopq{${loop('mhops', 2.4, 'ease-in-out')}}
 .mstep{${loop('mstep', 0.5, 'ease-in-out')}}
 .mblink{transform-box:fill-box;transform-origin:center;${loop('mblink', 11, 'linear')}}
 .mwave{${loop('mwave', 0.45, 'ease-in-out')}}
@@ -484,7 +487,7 @@ function leadBoat(flag: Flag, captain: string | undefined, wake = ''): string {
   // The mascot rides at the stern, against the white sail, and hops while the
   // agent needs the person. `captain` holds the attributes that time its
   // coming aboard or going ashore; with none given, nobody is on deck.
-  const crew = captain === undefined ? '' : `<g ${captain}><g transform="translate(-20 0) scale(1.7)">${rider(to !== 'none')}</g></g>`
+  const crew = captain === undefined ? '' : `<g ${captain}><g transform="translate(-20 0) scale(1.7)">${rider(flag)}</g></g>`
   const glow = [[84, 17, 0.13], [60, 12, 0.16], [38, 8, 0.2]]
     .map(([rx, ry, alpha]) => `<ellipse class="hG" cx="0" cy="10" rx="${rx}" ry="${ry}" fill="${patch(to, from)}" opacity="${alpha}"/>`)
     .join('')
@@ -832,6 +835,7 @@ function anticsCss(
   rand: () => number,
   greets: boolean,
   pause: number,
+  acts: Span[] = [],
 ): string {
   const still = [0, whole]
   const waves: Span[] = []
@@ -846,7 +850,7 @@ function anticsCss(
   }
   // Each with the longest it can take, so that one is started only where it
   // fits.
-  const acts: readonly { needs: number; run: (at: number) => number }[] = [
+  const kinds: readonly { needs: number; run: (at: number) => number }[] = [
     { needs: 0.5, run: hopAt },
     { needs: 0.9, run: at => hopAt(at) + hopAt(at + 0.44) },
     {
@@ -895,9 +899,11 @@ function anticsCss(
       at = from + 4.5 + rand() * 2
     }
     while (at + 0.6 < to) {
-      const act = acts[Math.floor(rand() * acts.length)]
+      const act = kinds[Math.floor(rand() * kinds.length)]
       if (act !== undefined && at + act.needs < to) {
+        const from = at
         at += act.run(at)
+        acts.push([from, at])
       }
       at += 2 + rand() * (pause - 2)
     }
@@ -907,20 +913,35 @@ function anticsCss(
 ${shownIn(`${name}w`, waves, whole)}.${name}w{animation:${name}w ${clock('step-end')}}${shownIn(`${name}n`, outside(waves, whole), whole)}.${name}n{animation:${name}n ${clock('step-end')}}`
 }
 
-// The mascot as it rides the lead boat. Hailing the person, it hops and waves
-// without a pause; otherwise it does what the trip's own keyframes have it do.
-function rider(isHailing: boolean): string {
+// The mascot as it rides the lead boat, doing what the trip's own keyframes
+// have it do. Hailing the person, it also waves and hops without a pause, in a
+// beat that starts as the hailing does; once that stops, a hop under way
+// comes down rather than vanishing.
+function rider(flag: Flag): string {
+  const isHailing = flag.to !== 'none'
+  const hailed = flag.hailed ?? flag.age
+  let hop = ''
+  if (isHailing) {
+    hop = `style="animation:mhops ${HAIL_S}s ease-in-out ${f(-hailed)}s infinite"`
+  } else if (flag.from !== 'none') {
+    const into = Math.max(0, hailed - flag.age) % HAIL_S
+    if (into > HAIL_S * 0.7) {
+      hop = `style="animation:mhops ${HAIL_S}s ease-in-out ${f(-(into + flag.age))}s 1 both"`
+    }
+  }
   const arm = isHailing
     ? `<g class="mwave">${clay(M_ARM_UP)}</g>`
     : `<g class="can">${clay(M_ARM_R)}</g><g class="caw" opacity="0"><g class="mwave">${clay(M_ARM_UP)}</g></g>`
-  return `<g class="${isHailing ? 'mhopq' : 'ca'}">${clay(M_BODY + M_ARM_L + M_LEGS_A + M_LEGS_B)}${arm}${M_FACE}</g>`
+  return `<g class="ca"><g ${hop}>${clay(M_BODY + M_ARM_L + M_LEGS_A + M_LEGS_B)}${arm}${M_FACE}</g></g>`
 }
 
 // The mascot on its way to or from the boat, at the scale it has on the sand.
 // `gait` and `rest` hold the attributes that show its stepping legs on the
 // stretches it walks and its legs at rest on the others.
-function walker(gait: string, rest: string): string {
-  return `<g transform="scale(2.4)">${clay(M_BODY + M_ARM_L + M_ARM_R)}<g ${rest}>${clay(M_LEGS_A + M_LEGS_B)}</g><g ${gait} opacity="0">${M_STEPPING}</g>${M_FACE}</g>`
+// `lie` holds the attributes that turn it upright from lying down, where it
+// sets out from the hammock or the lounger.
+function walker(gait: string, rest: string, lie = ''): string {
+  return `<g transform="scale(2.4)"><g ${lie}>${clay(M_BODY + M_ARM_L + M_ARM_R)}<g ${rest}>${clay(M_LEGS_A + M_LEGS_B)}</g><g ${gait} opacity="0">${M_STEPPING}</g>${M_FACE}</g></g>`
 }
 
 // The mascot living its day on the island: one figure whose stepping legs,
@@ -1074,16 +1095,9 @@ function wakeOf(name: string, legs: readonly Leg[], span: number): string {
 }
 
 // Keyframes that turn a boat about wherever its course changes heading.
-function facing(name: string, legs: readonly Leg[], span: number): string {
-  let heading = legs[0]?.heading ?? 1
-  let frames = `0%{transform:scaleX(${heading})}`
-  for (const leg of legs) {
-    if (leg.heading !== heading) {
-      frames += `${pct(leg.from, span)}{transform:scaleX(${heading})}${pct(leg.from + TURN_S, span)}{transform:scaleX(${leg.heading})}`
-      heading = leg.heading
-    }
-  }
-  return `@keyframes ${name}{${frames}100%{transform:scaleX(${heading})}}`
+function facing(name: string, points: readonly [number, number][], span: number): string {
+  const frames = points.map(([at, scale]) => `${pct(at, span)}{transform:scaleX(${f(scale)})}`).join('')
+  return `@keyframes ${name}{${frames}100%{transform:scaleX(${f(points[points.length - 1]?.[1] ?? 1)})}}`
 }
 
 // How long the captain's antics run before they come round again.
@@ -1106,11 +1120,12 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   const route = routeOf(LEAD_BOAT)
   const hull = (captain: string | undefined, wake?: string): string => `<g transform="scale(${route.scale})"><g class="boat">${leadBoat(flag, captain, wake)}</g></g>`
   // The boat on a course of its own, turning about as the course does.
+  const turning = turns(plan.boat, voyage.facing)
   const under = (span: number, captain: string | undefined): { svg: string; css: string } => {
     const now = along(plan.boat, t)
     return {
-      css: `${track('vbp', plan.boat, span)}${facing('vbf', plan.boat, span)}${wakeOf('vbw', plan.boat, span)}`,
-      svg: tracked('vbp', span, t, now, `<g ${once('vbf', span, t)} transform="scale(${headingAt(plan.boat, t)} 1)">${hull(captain, once('vbw', span, t))}</g>`),
+      css: `${track('vbp', plan.boat, span)}${facing('vbf', turning, span)}${wakeOf('vbw', plan.boat, span)}`,
+      svg: tracked('vbp', span, t, now, `<g ${once('vbf', span, t)} transform="scale(${f(facingAt(turning, t))} 1)">${hull(captain, once('vbw', span, t))}</g>`),
     }
   }
   // The mascot on foot along its course, its legs stepping only where it
@@ -1124,15 +1139,27 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
     const last = plan.clawd[plan.clawd.length - 1]
     const ends: 0 | 1 = last !== undefined && isOnDeck(last) ? 1 : 0
     const isAtDeck = t >= span ? ends === 1 : deck.some(([from, to]) => t >= from && t < to)
-    const figure = tracked('vcp', span, t, now, walker(stepped('vgo', span, t), stepped('vst', span, t)))
+    // Woken in the hammock or on the lounger, it sits up as it gets down, and
+    // what of it hangs below the hammock's cloth stays cut away.
+    const lying = lyingIn(voyage.clawd)
+    const getsUp = lying === undefined ? undefined : plan.clawd[0]
+    const pose = lying === 'hammock' ? M_LYING : M_RECLINE
+    const lie = getsUp === undefined ? '' : once('vlie', span, t)
+    const sitsUp = getsUp === undefined ? '' : `@keyframes vlie{0%,${pct(getsUp.from, span)}{transform:${pose};animation-timing-function:ease-in-out}${pct(getsUp.to, span)},100%{transform:none}}`
+    const walking = tracked('vcp', span, t, now, walker(stepped('vgo', span, t), stepped('vst', span, t), lie))
+    const figure = lying === 'hammock' ? `<g clip-path="url(#hung)">${walking}</g>` : walking
     return {
-      css: `${track('vcp', plan.clawd, span)}${shownIn('vgo', strides, span, 0)}${shownIn('vst', outside(strides, span), span, 1)}${shownIn('vdk', deck, span, ends)}${shownIn('vsh', outside(deck, span), span, ends === 1 ? 0 : 1)}`,
+      css: `${track('vcp', plan.clawd, span)}${sitsUp}${shownIn('vgo', strides, span, 0)}${shownIn('vst', outside(strides, span), span, 1)}${shownIn('vdk', deck, span, ends)}${shownIn('vsh', outside(deck, span), span, ends === 1 ? 0 : 1)}`,
       back: `<g ${stepped('vsh', span, t)}${isAtDeck ? ' opacity="0"' : ''}>${figure}</g>`,
       front: `<g ${stepped('vdk', span, t)}${isAtDeck ? '' : ' opacity="0"'}>${figure}</g>`,
     }
   }
+  // What it gets up to on deck runs on the wall clock and is the same from
+  // one trip to the next, so it carries on unbroken as one trip gives way to
+  // another.
+  const acts: Span[] = []
+  const antics = isPlain ? '' : anticsCss('ca', timing => `${CAPTAIN_S}s ${timing} ${PHASE} infinite`, [[0, CAPTAIN_S]], CAPTAIN_S, scatter(CAPTAIN_S), false, 11, acts)
   if (voyage.phase === 'fetch') {
-    const antics = isPlain ? '' : anticsCss('ca', timing => `${CAPTAIN_S}s ${timing} ${PHASE} infinite`, [[0, CAPTAIN_S]], CAPTAIN_S, rand, false, 11)
     const circuit = `<g style="--u:${route.seconds}s;--b:${f(t - plan.settled + CIRCUIT_START)};--r:${route.rx}px;--q:${route.ry}px;--d:0" transform="translate(${route.cx} ${route.cy})">
 <g class="bx"><g class="by"><g class="bf">${hull('')}</g></g></g></g>`
     if (t >= plan.settled) {
@@ -1156,7 +1183,16 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   // Its day starts as it gets home: until then the day's clock has not begun.
   // What of it would hang below the hammock's cloth is cut away.
   const life = `<g style="--n:${f(isHome ? (t - plan.settled) % day.span : t - plan.settled)}"><g clip-path="url(#hung)"><g class="lpos" transform="translate(${f(at.x)} ${f(at.y)})">${islander()}</g></g><g class="lfront">${LOUNGER_FRONT}</g></g>`
-  const css = faces + dayCss(day, rand, voyage.greet, isPlain) + course.css
+  // Brought home, it rests on deck: an antic it was in the middle of as the
+  // trip began plays out, and no other starts.
+  const inLoop = (wall: number): number => (wall % 100000) % CAPTAIN_S
+  const began = inLoop(voyage.at / 1000)
+  const now = inLoop(seconds)
+  const act = acts.find(([from, to]) => began > from && began < to)
+  const calms = act === undefined || now < began || now >= act[1] ? '' : ['ca', 'caw', 'can']
+    .map(part => `.${part}{animation:${part} ${CAPTAIN_S}s ${part === 'ca' ? 'ease-in-out' : 'step-end'} ${f(-now)}s ${f(act[1] / CAPTAIN_S)} forwards}`)
+    .join('')
+  const css = faces + dayCss(day, rand, voyage.greet, isPlain) + course.css + (isRiding && calms !== '' ? antics + calms : '')
   if (isHome) {
     return { boat: course.svg, early: life, late: '', css }
   }
@@ -1235,15 +1271,18 @@ const BURSTS = [
   { x: 520, y: 260, c: '#ffffff', d: 1.6 },
 ]
 
-// Each burst's glow on the water, drawn with the sea so the shore covers it.
-function fireworkGlow(): string {
+// Each burst's glow on the water, drawn with the sea so the shore covers it,
+// `age` seconds into the show.
+function fireworkGlow(age: number): string {
   return BURSTS.map(
     ({ x, y, c, d }) =>
-      `<ellipse class="fwr" cx="${x}" cy="${f(HORIZON + 30 + (HORIZON - y) * 0.4)}" rx="120" ry="13" fill="${c}" filter="url(#blur6)" style="animation-delay:${d + 0.6}s"/>`,
+      `<ellipse class="fwr" cx="${x}" cy="${f(HORIZON + 30 + (HORIZON - y) * 0.4)}" rx="120" ry="13" fill="${c}" filter="url(#blur6)" style="animation-delay:${f(d + 0.6 - age)}s"/>`,
   ).join('')
 }
 
-function fireworks(): string {
+// The bursts in the sky, `age` seconds into the show: a scene drawn again
+// while they go on carries on from where the last one was.
+function fireworks(age: number): string {
   return BURSTS
     .map(({ x, y, c, d }) => {
       let spokes = ''
@@ -1254,8 +1293,8 @@ function fireworks(): string {
         spokes += `<line x1="${f(Math.cos(a) * 30)}" y1="${f(Math.sin(a) * 30)}" x2="${x2}" y2="${y2}"/><circle cx="${x2}" cy="${y2}" r="4"/>`
       }
       return `<g transform="translate(${x} ${y})">
-<line class="trail" x1="0" y1="0" x2="0" y2="40" stroke="${c}" stroke-width="3" stroke-linecap="round" style="animation-delay:${d}s"/>
-<g class="fw" stroke="${c}" fill="${c}" stroke-width="3" stroke-linecap="round" style="animation-delay:${d + 0.6}s">${spokes}</g></g>`
+<line class="trail" x1="0" y1="0" x2="0" y2="40" stroke="${c}" stroke-width="3" stroke-linecap="round" style="animation-delay:${f(d - age)}s"/>
+<g class="fw" stroke="${c}" fill="${c}" stroke-width="3" stroke-linecap="round" style="animation-delay:${f(d + 0.6 - age)}s">${spokes}</g></g>`
     })
     .join('')
 }
@@ -1297,7 +1336,8 @@ export type SceneState = {
   isCompacting: boolean
   // A prompt was just sent: the flying fish leap.
   isLeaping: boolean
-  isCelebrating: boolean
+  // How many seconds the fireworks have been going, while they are.
+  fireworks: number | undefined
   scheme: 'light' | 'dark' | undefined
   // The wall clock the looping animations take their phase from.
   seconds: number
@@ -1315,7 +1355,7 @@ export function scene(state: SceneState): string {
 }
 
 function draw(state: SceneState, isPlain: boolean): string {
-  const { mood, isCelebrating, isLeaping, scheme, seconds } = state
+  const { mood, fireworks: show, isLeaping, scheme, seconds } = state
   const pair = trip(state.voyage, seconds, state.flag, isPlain)
   const far = fleet(state.boats, true, seconds, state.flag, isPlain)
   const near = fleet(state.boats, false, seconds, state.flag, isPlain)
@@ -1350,7 +1390,7 @@ ${farIsland(760, 120)}${farIsland(1010, 70)}
 ${coralReef(400, 850, 1.1, false, 71)}${coralReef(920, 852, 1, true, 77)}${coralReef(668, 792, 0.6, false, 83)}
 <ellipse cx="800" cy="790" rx="300" ry="44" fill="url(#halo)" opacity=".4"/>
 <g class="glit"><path d="M${SUN_X - 24} ${HORIZON}L${SUN_X + 24} ${HORIZON}L${SUN_X + 190} ${HORIZON + 430}L${SUN_X - 190} ${HORIZON + 430}Z" class="colm" fill="url(#column)" filter="url(#blur6)"/>
-<g class="gcol">${glitter()}</g></g>${isCelebrating ? fireworkGlow() : ''}</g>
+<g class="gcol">${glitter()}</g></g>${show === undefined ? '' : fireworkGlow(show)}</g>
 ${seaLife()}
 <g><g class="wvs">${waves()}</g>${state.isCompacting ? WHIRLPOOL : ''}</g>
 <ellipse class="halo" cx="260" cy="570" rx="380" ry="70" fill="url(#halo)" opacity=".85"/>
@@ -1376,6 +1416,6 @@ ${FIRE_ART}
 <g transform="translate(70 230)"><path class="gull wing" d="M0 0 q8 -8 16 0 q8 -8 16 0" fill="none" stroke-width="2.5" style="--d:.3"/></g>
 <g transform="translate(-40 250)"><path class="gull wing" d="M0 0 q6 -6 12 0 q6 -6 12 0" fill="none" stroke-width="2" style="--d:.55"/></g></g>
 ${isLeaping ? flyingFish() : ''}
-${isCelebrating ? fireworks() : ''}</g>
+${show === undefined ? '' : fireworks(show)}</g>
 </g></svg>`
 }

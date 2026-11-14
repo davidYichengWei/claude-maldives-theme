@@ -5,3 +5,4 @@ node_modules/
 dev/build/
 dev/*.svg
 dev/*.png
+dev/verify/out/

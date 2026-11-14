@@ -1,0 +1,6 @@
+{
+ "about": "A turn ends: the boat brings Clawd back to the jetty, Clawd walks home, the boat sails off",
+ "start": { "mood": "working" },
+ "events": [[0, "turn"], [30, "answer"]],
+ "frames": { "from": 28, "to": 60, "every": 0.25 }
+}

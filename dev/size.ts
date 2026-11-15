@@ -11,6 +11,15 @@ const land = embark({ ...fetch, at: NOW - 60000 }, 'land', NOW - 2000, true)
 // Every circuit taken, the dinghies on their way in and the fishing boats on
 // their way out.
 const many = [...ROUTES.crew.map((_, i) => b('crew', i, 3)), ...ROUTES.shell.map((_, i) => b('shell', i, 40, 2))]
-const len = (s: Partial<SceneState>): number => scene({ ...base, ...s }).length
+// A value used before it was declared, or a sum gone wrong, shows up in the
+// markup as text rather than as an error.
+const len = (s: Partial<SceneState>): number => {
+  const source = scene({ ...base, ...s })
+  const broken = source.match(/.{0,40}(undefined|NaN).{0,40}/s)
+  if (broken !== null) {
+    throw new Error(`scene markup holds "${broken[1]}": ${broken[0]}`)
+  }
+  return source.length
+}
 console.log('idle', len({}), 'fetch', len({ voyage: fetch, mood: 'working' }), 'land', len({ voyage: land, mood: 'done' }))
 console.log('busiest fetch', len({ voyage: fetch, mood: 'working', boats: many, isLeaping: true, fireworks: 2, isCompacting: true }), 'busiest land', len({ voyage: land, mood: 'done', boats: many, isLeaping: true, fireworks: 2, isCompacting: true }))

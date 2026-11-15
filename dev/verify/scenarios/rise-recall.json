@@ -1,0 +1,7 @@
+{
+  "about": "Clawd woken in the hammock, then on the lounger, and the turn over before it is all the way up: it carries on getting down from as far as it had got",
+  "start": { "mood": "idle", "home": 600 },
+  "events": [[1, "/maldives island nap"], [22, "turn"], [22.6, "answer"], [70, "/maldives island sun"], [94, "turn"], [94.7, "answer"]],
+  "askEvery": 7,
+  "frames": { "from": 18, "to": 104, "every": 0.1 }
+}

@@ -1,9 +1,9 @@
 // The Maldives lagoon backdrop: one SVG whose layers follow the agent's mood.
 
 import type { Mood, Need } from '../types'
-import { ENTER_X, HORIZON_Y, LEAVE_X, ROAM_S, depthScale, enterSeconds, fixAt, lapAt, lapStart, leaveSeconds, roams, routeOf, sailsBehind, sizeOn, sizesOf, whereabouts } from './fleet'
+import { ENTER_X, HORIZON_Y, LEAVE_X, eased, ROAM_S, depthScale, enterSeconds, fixAt, lapAt, lapStart, leaveSeconds, roams, routeOf, sailsBehind, sizeOn, sizesOf, whereabouts } from './fleet'
 import type { Boat, Point } from './fleet'
-import { BAR, BEACH_TIP, CIRCUIT_START, DOCK, circuitAt, FIRE, HOME, ISLE, JETTY, LAP_FACING, LOUNGER, along, dayOf, facingAt, isByLounger, lifeAt, lyingIn, planOf, scatter, turns } from './voyage'
+import { BAR, BEACH_TIP, CIRCUIT_START, DOCK, circuitAt, FIRE, HOME, ISLE, JETTY, LAP_FACING, LOUNGER, along, dayOf, facingAt, isByLounger, lifeAt, planOf, RISE_S, risingFrom, scatter, turns } from './voyage'
 import type { Day, Doing, Leg, Voyage } from './voyage'
 
 const W = 1600
@@ -33,7 +33,7 @@ const LEAP_EVERY = 52
 // Every looping animation takes its phase from the wall clock (--t, seconds),
 // so a redraw resumes the motion where it was instead of restarting it. --d
 // shifts one element's phase.
-const PHASE = 'calc((var(--t,0) + var(--d,0)) * -1s)'
+const PHASE = 'calc((var(--t) + var(--d,0))*-1s)'
 
 function loop(name: string, seconds: number, timing: string): string {
   return `animation:${name} ${seconds}s ${timing} ${PHASE} infinite`
@@ -62,21 +62,24 @@ const STYLE = `
 .roof0{stop-color:#d9b273}.roof1{stop-color:#a87a3f}
 .cl0{stop-color:#ffffff}.cl1{stop-color:#e3f1fa}
 .sund0{stop-color:#fffbe6}.sund1{stop-color:#ffedb0}.glow0{stop-color:#fff1bf}.col0{stop-color:#fff6d6}
-.gcol{fill:#fffadf}
+.gcol{fill:none;stroke:#fffadf;stroke-linecap:round}
 .far{fill:#3f8f7a}.farsand{fill:#f1e6c8}
 .wall{fill:#b7875a}.wallshade{fill:#946a43}.deck{fill:#8a6440}.post{stroke:#6b4c2f}
 .trunk{fill:#9a7650}.bark{fill:#82623f}.ring{stroke:#7d5d3c;fill:none}.sh{fill:#6b5326;opacity:.18}
 .fa{fill:#2c8a4f}.fb{fill:#3aa35f}.fc{fill:#24733f}.rib{stroke:#1d5e33}
 .bush{fill:#2f8a4f}.bush2{fill:#3fa35e}.leaf{stroke:#2f8a4f;stroke-width:2.2;stroke-linecap:round}.flw{fill:#ff6f91}.flc{fill:#ffe08a}
 .grass{fill:none;stroke:#5f9e47;stroke-width:1.5;stroke-linecap:round}.grain{fill:#a88a52}.shoal{fill:#a6f3e4}
-.crb{fill:#e8603c}.crl{stroke:#b8432a;stroke-width:1.3;stroke-linecap:round;fill:none}
+@keyframes bglow{0%,100%{opacity:.35}50%{opacity:.95}}.biw{stroke:#1fdcff;opacity:.5}.bil{stroke:#a8fdff;stroke-dasharray:26 34 8 50;animation:lap 9s linear ${PHASE} infinite,bglow 3.7s ease-in-out ${PHASE} infinite}.wake.bwk{stroke:#7ffaff;stroke-width:2.4;opacity:.9}.bip{stroke:#8ffbff;stroke-linecap:round;${loop('bglow', 2.9, 'ease-in-out')}}
+.pkb{fill:#5d9a99}.pkf{fill:#6c675e}.wsb{fill:#33536a}.wsd{fill:#2c4a5f}#wsp{fill:#dbe9f0}.bio{display:none}
+.hrl{stroke:#b49a6c}.hrg{fill:#a3acb2}.hrh{fill:#f2f4f5}.hrk{stroke:#eef1f3}.hrw{fill:#76828b}.hmc{fill:#f2c8a0}.hms{stroke:#c97f58}.hml{stroke:#d9512f;stroke-width:1.2;stroke-linecap:round;fill:none}.hmo{fill:#ef6a3c}
+.crb{fill:#ec6a43}.crl{stroke:#b8432a;stroke-width:1.4;stroke-linecap:round;fill:none}.cre{fill:#fff}.crp{fill:#ff8f9e;opacity:.8}
 .foam{stroke:#ffffff}.wet{fill:#d2bd8a}
 .crest{fill:#ffffff}
 .glint{fill:#ffffff}
 .gull{stroke:#2a3c46}
 .shade{fill:#0a4f66;opacity:.13}
 .tsk{fill:#5fa596}.tsh{fill:#4f8459}.tsl{fill:#74a872}.tsc{stroke:#346048}.teye{fill:#1d3326}
-.mb{fill:#27566e}.mm{fill:#d5f0f0;opacity:.4}
+.mb{fill:#1f5a72}.mm{fill:#d5f0f0;opacity:.4}
 .rbase{fill:#0a6278;opacity:.22}.kl{fill:none;stroke:#fff;opacity:.38}.sg{fill:none;stroke:#35b37e}
 .k1{fill:#ff8fa3}.k2{fill:#ffa35c}.k3{fill:#b98ae0}.k4{fill:#ffd86b}.k5{fill:#4fd0bd}.k6{fill:#f2665f}
 .s1{fill:none;stroke:#ff8fa3}.s6{fill:none;stroke:#f2665f}
@@ -95,7 +98,7 @@ const STYLE = `
   .roof0{stop-color:#7a6040}.roof1{stop-color:#4f3b25}
   .cl0{stop-color:#5a7290}.cl1{stop-color:#2c4460}
   .col0{stop-color:#c4d6ff}
-  .gcol{fill:#d6e3ff}.glit{opacity:.55}
+  .gcol{stroke:#d6e3ff}.glit{opacity:.55}
   .sun,.sunglow{opacity:0}.moon,.stars,.moonglow,.navlamp{opacity:1}
   .far{fill:#16362f}.farsand{fill:#6b6350}
   .wall{fill:#5e4630}.wallshade{fill:#4a3624}.deck{fill:#47341f}
@@ -103,10 +106,11 @@ const STYLE = `
   .fa{fill:#173f2a}.fb{fill:#1e4d33}.fc{fill:#123321}.rib{stroke:#0c2618}
   .bush{fill:#173f2a}.bush2{fill:#1e4d33}.leaf{stroke:#173f2a}.flw{fill:#8a4a5c}.flc{fill:#9c8a5a}
   .grass{stroke:#2d4d2a}.grain{fill:#4f4636}.shoal{fill:#2f7f7a}
-  .crb{fill:#93442f}.crl{stroke:#6e3424}
+  .pkb{fill:#2c5560}.pkf{fill:#3b3933}.wsb{fill:#1a3344}.wsd{fill:#142a38}#wsp{fill:#6f8fa0}.bio{display:inline}.glint{fill:#8ff6ff}
+  .hrl{stroke:#7a6a4c}.hrg{fill:#6b7378}.hrh{fill:#aab3b9}.hrk{stroke:#a6afb5}.hrw{fill:#4e575e}.hmc{fill:#9a8064}.hms{stroke:#6e4a33}.hml{stroke:#8a3f26}.hmo{fill:#93442f}
+  .crb{fill:#93442f}.crl{stroke:#6e3424}.cre{fill:#b9c4cf}.crp{fill:#a0505e;opacity:.6}
   .foam{stroke:#9fc4cc}.wet{fill:#655d48}
   .wvs{opacity:.45}
-  .glint{fill:#dfe9ff}
   .gull{stroke:#9fb7cc}
   .shade{fill:#010d14;opacity:.14}
   .tsk{fill:#20463b}.tsh{fill:#22381f}.tsl{fill:#2f4a28}.tsc{stroke:#132313}.teye{fill:#07120c}
@@ -165,6 +169,8 @@ const STYLE = `
 @keyframes oy{0%,100%{transform:translateY(0)}25%{transform:translateY(calc(var(--q) * -1))}75%{transform:translateY(var(--q))}}
 @keyframes oy2{0%,100%{transform:translateY(calc(var(--q) * -1))}50%{transform:translateY(var(--q))}}
 @keyframes oz{0%,100%{transform:scale(var(--z0))}50%{transform:scale(var(--z1))}}
+@keyframes pkt{0%,100%{transform:scaleX(1)}50%{transform:scaleX(.5) rotate(8deg)}}
+@keyframes ps{0%,50%,100%{transform:scale(.9)}25%{transform:scale(.78)}75%{transform:scale(1)}}
 @keyframes of{0%,100%{transform:scaleX(0)}1.5%,48.5%{transform:scaleX(1)}50%{transform:scaleX(0)}51.5%,98.5%{transform:scaleX(-1)}}
 @keyframes ob{0%,50%,100%{transform:scaleX(1)}1.5%,48.5%,51.5%,98.5%{transform:scaleX(0)}}
 @keyframes or{0%,50%,100%{transform:translateX(0)}1.5%,48.5%{transform:translateX(-20px)}51.5%,98.5%{transform:translateX(20px)}}
@@ -194,7 +200,7 @@ const STYLE = `
 .wv{${loop('wv', 24, 'linear')}}
 .swell{${loop('swell', 6, 'ease-in-out')}}
 .gcol>*{${loop('shimmer', 3.4, 'ease-in-out')}}
-.spark{transform-box:fill-box;transform-origin:center;${loop('sparkle', 5, 'ease-in-out')}}
+.spark use{transform-box:fill-box;transform-origin:center;${loop('sparkle', 5, 'ease-in-out')}}
 .palm{transform-box:view-box;${loop('sway', 7, 'ease-in-out')}}
 .gulls{${loop('fly', 58, 'linear')}}
 .wing{transform-box:fill-box;transform-origin:center;${loop('flap', 0.9, 'ease-in-out')}}
@@ -204,6 +210,8 @@ const STYLE = `
 .by{animation:oy var(--u) ease-in-out calc(var(--b,0) * -1s) infinite}
 .bv{animation:oy2 var(--v) ease-in-out calc(var(--c,0) * -1s) infinite}
 .bz{animation:oz var(--v) ease-in-out calc(var(--c,0) * -1s) infinite}
+.pkt{transform-origin:-36px 2px;${loop('pkt', 0.8, 'ease-in-out')}}
+.ps{animation:ps var(--u) ease-in-out calc(var(--b,0) * -1s) infinite}
 .bf{animation:of var(--u) linear calc(var(--b,0) * -1s) infinite}
 .bw{animation:ob var(--u) linear calc(var(--b,0) * -1s) infinite}
 .br{animation:or var(--u) linear calc(var(--b,0) * -1s) infinite}
@@ -250,16 +258,16 @@ const STYLE = `
 .mbob{${loop('mstep', 2.2, 'ease-in-out')}}
 .grass{${loop('grass', 5, 'ease-in-out')}}
 .working .gcol>*{animation-duration:1.7s}
-.working .spark{animation-duration:2.4s}
+.working .spark use{animation-duration:2.4s}
 .beacon{${loop('blink', 1.6, 'ease-in-out')}}
 .lamp{${loop('twinkle', 3, 'ease-in-out')}}
 .fw{transform-box:fill-box;transform-origin:center;opacity:0;animation:burst 1.8s ease-out 4}
 .trail{opacity:0;animation:rise .7s ease-in 4}
 .fwr{opacity:0;animation:fwr 1.8s ease-out 4}
-.ffX{animation:ffX 3s linear 1 both}
-.ffY{animation:ffY 1.5s linear 2 both}
-.ffR{animation:ffR 1.5s linear 2 both}
-.ffs{fill:none;stroke:#fff;stroke-width:1.6;opacity:0;transform-box:fill-box;transform-origin:center;animation:ffs .9s ease-out 1}
+.ffX{animation:ffX 3s linear calc(var(--f) * 1s) 1 both}
+.ffY{animation:ffY 1.5s linear calc(var(--f) * 1s) 2 both}
+.ffR{animation:ffR 1.5s linear calc(var(--f) * 1s) 2 both}
+.ffs{fill:none;stroke:#fff;stroke-width:1.6;opacity:0;transform-box:fill-box;transform-origin:center;animation:ffs .9s ease-out calc((var(--f) + .1 + var(--k) * 1.4) * 1s) 1}
 `
 
 // The fleet's hulls and every boat's bow-on view are drawn once, in the
@@ -322,9 +330,30 @@ const TUFT = '<path id="tuft" class="grass" d="M0 0q-3 -7 -9 -10M0 0q-1 -9 -3 -1
 
 // Each dinghy and fishing boat is a clone of these, its shadow on the water
 // drawn with its hull, and its wake apart, for a wake only shows under way.
-const BOAT_DEFS = `<g id="cH"><ellipse cx="0" cy="13" rx="27" ry="2.6" fill="#000" opacity=".12"/>${CREW_HULL}</g><g id="sH"><ellipse cx="0" cy="9" rx="36" ry="3" fill="#000" opacity=".14"/>${SHELL_HULL}</g><path id="cW" class="wake" d="M-28 7q-12 0 -26 4M-25 11q-9 2 -19 6"/><path id="sW" class="wake" d="M-40 4q-16 0 -34 5M-36 9q-12 2 -26 8"/><g id="lB">${LEAD_BOW}</g><g id="cB">${CREW_BOW}</g><g id="sB">${SHELL_BOW}</g>`
+const BOAT_DEFS = `<g id="cH"><ellipse cx="0" cy="13" rx="27" ry="2.6" fill="#000" opacity=".12"/>${CREW_HULL}</g><g id="sH"><ellipse cx="0" cy="9" rx="36" ry="3" fill="#000" opacity=".14"/>${SHELL_HULL}</g><g id="cW"><path class="wake" d="M-28 7q-12 0 -26 4M-25 11q-9 2 -19 6"/><path class="wake bio bwk" d="M-28 7q-12 0 -26 4M-25 11q-9 2 -19 6"/></g><g id="sW"><path class="wake" d="M-40 4q-16 0 -34 5M-36 9q-12 2 -26 8"/><path class="wake bio bwk" d="M-40 4q-16 0 -34 5M-36 9q-12 2 -26 8"/></g><g id="lB">${LEAD_BOW}</g><g id="cB">${CREW_BOW}</g><g id="sB">${SHELL_BOW}</g>`
+
+// Every cloud is a clone of one puff, placed and scaled.
+const CLOUD = `<g id="cl" fill="url(#cloud)" filter="url(#soft)" opacity=".92"><ellipse rx="110" ry="24"/><ellipse cx="-48" cy="-14" rx="52" ry="30"/><ellipse cx="22" cy="-26" rx="64" ry="42"/><ellipse cx="86" cy="-8" rx="46" ry="26"/><ellipse cx="-96" cy="-2" rx="34" ry="16"/></g>`
+
+// A flying fish, wings spread.
+const FLYER = `<path class="ffw" d="M4 -2Q-4 -18 -16 -20Q-8 -10 -4 -1ZM4 2Q-2 12 -12 14Q-6 7 -4 1Z"/><path class="ff" d="M16 0Q6 -5 -10 -1L-18 -7L-15 0L-18 6L-10 1Q6 5 16 0Z"/>`
+
+// A baby blacktip reef shark at the surface, seen from the side like the
+// boats, nose to the right: dorsal fin and tail tip out of the water, the body
+// a shade under it. The tail beats by narrowing as it sweeps across the line
+// of sight. The sharks that circle the villas are clones of it.
+const PUP = `<g id="pup"><path class="pkb" d="M30 3C24 0 8 -1 -8 0C-20 1 -30 2.5 -38 3.5C-30 5.5 -18 7.5 -6 7.5C10 7.5 24 6 30 3Z"/><g class="pkt"><path class="pkf" d="M-36 1.5Q-40 -5 -47 -11Q-46 -4 -44 2Z"/><path fill="#1e1c1a" d="M-47 -11L-45 -6.5L-43.6 -7.5Z"/></g><path class="pkf" d="M8 1Q4 -9 -4 -15Q-3 -7 -7 1Z"/><path fill="#1e1c1a" d="M-4 -15Q-2 -12.5 0 -10L-3.5 -10.5Z"/><path d="M31 2q7 -2 13 1M31 3q7 2 13 5M-8 2q-14 1 -26 4" fill="none" stroke="#fff" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></g>`
+
+// One four-pointed star of radius `r`, for the twinkles on the water.
+const SPARK = (r: number): string => `<path id="k${r}" d="M0 ${-r * 2}L${r / 2} 0L0 ${r * 2}L${-r / 2} 0ZM${-r * 2} 0L0 ${r / 2}L${r * 2} 0L0 ${-r / 2}Z"/>`
 
 const DEFS = `<defs>
+<path id="rf" d="M6 0Q1 -4 -5 0Q1 4 6 0ZM-4 0l-5 -3.5v7Z"/><path id="sr" d="M11 0Q3 -6 -8 0Q3 6 11 0ZM-7 0l-8 -5v10Z"/>
+${PUP}
+${CLOUD}<g id="fy">${FLYER}</g>
+<path id="sf" class="wig" d="M-11 0Q-3 -6 8 0Q-3 6 -11 0ZM7 0l8 -5v10Z"/>
+<pattern id="wsp" width="13" height="11" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.8"/><circle cx="9.5" cy="8.5" r="1.4"/></pattern>
+${SPARK(2)}${SPARK(3)}${SPARK(4)}
 <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sky0"/><stop offset=".5" class="sky1"/><stop offset=".85" class="sky2"/><stop offset="1" class="sky3"/></linearGradient>
 <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sea0"/><stop offset=".18" class="sea1"/><stop offset=".45" class="sea2"/><stop offset=".75" class="sea3"/><stop offset="1" class="sea4"/></linearGradient>
 <radialGradient id="halo"><stop offset="0" class="halo0"/><stop offset=".45" class="halo1" stop-opacity=".95"/><stop offset=".8" class="halo2" stop-opacity=".45"/><stop offset="1" class="halo2" stop-opacity="0"/></radialGradient>
@@ -354,24 +383,35 @@ function rays(count: number, salt: number, width: number): string {
     const a = ((k + rnd(k, salt) * 0.7) / count) * Math.PI * 2
     const half = ((0.5 + rnd(k, salt + 1) * 1.6) * width * Math.PI) / 180
     const len = 300 + rnd(k, salt + 2) * 340
-    d += `M0 0L${f(Math.cos(a - half) * len)} ${f(Math.sin(a - half) * len)}L${f(Math.cos(a + half) * len)} ${f(Math.sin(a + half) * len)}Z`
+    d += `M0 0L${Math.round(Math.cos(a - half) * len)} ${Math.round(Math.sin(a - half) * len)}L${Math.round(Math.cos(a + half) * len)} ${Math.round(Math.sin(a + half) * len)}Z`
   }
   return `<path d="${d}" fill="url(#ray)"/>`
 }
 
 // The light path on the water: glints packed near the horizon, spreading out
 // toward the viewer.
+// Each glint is a short dash with round ends. Glints that share a beat of
+// the shimmer and a thickness are one path, so the column costs little.
+const GLITTER_BEATS = 6
+const GLITTER_WIDTHS = [2.2, 3.4, 5]
 function glitter(): string {
-  let out = ''
+  const paths = new Map<string, string>()
   for (let i = 0; i < 64; i++) {
     const v = Math.pow(rnd(i, 1), 1.5)
     const y = HORIZON + 5 + v * 400
     const half = 22 + (y - HORIZON) * 0.4
     const x = SUN_X + (rnd(i, 2) + rnd(i, 3) - 1) * half
     const rx = (4 + rnd(i, 4) * 12) * (0.55 + v * 1.5)
-    out += `<ellipse cx="${f(x)}" cy="${f(y)}" rx="${f(rx)}" ry="${f(0.9 + v * 2)}" style="--d:${f(rnd(i, 5) * 3.4)}"/>`
+    const thick = 2 * (0.9 + v * 2)
+    const width = GLITTER_WIDTHS.reduce((a, b) => (Math.abs(b - thick) < Math.abs(a - thick) ? b : a))
+    const reach = Math.max(0.5, rx * 2 - width)
+    const key = `${Math.floor(rnd(i, 5) * GLITTER_BEATS)} ${width}`
+    paths.set(key, `${paths.get(key) ?? ''}M${Math.round(x - reach / 2)} ${Math.round(y)}h${Math.round(reach)}`)
   }
-  return out
+  return [...paths].map(([key, d]) => {
+    const [beat = '0', width = '2'] = key.split(' ')
+    return `<path stroke-width="${width}" d="${d}" style="--d:${f((Number(beat) * 3.4) / GLITTER_BEATS)}"/>`
+  }).join('')
 }
 
 // One row of wave crests. A tile holds three uneven crests, a pattern repeats
@@ -405,10 +445,9 @@ function waves(): string {
   return rows.map(([dy, period, amp, alpha, speed], i) => waveRow(i, HORIZON + dy, period, amp, alpha, speed)).join('')
 }
 
+
 function cloud(x: number, y: number, s: number): string {
-  return `<g transform="translate(${x} ${y}) scale(${s})" fill="url(#cloud)" filter="url(#soft)" opacity=".92">
-<ellipse cx="0" cy="0" rx="110" ry="24"/><ellipse cx="-48" cy="-14" rx="52" ry="30"/>
-<ellipse cx="22" cy="-26" rx="64" ry="42"/><ellipse cx="86" cy="-8" rx="46" ry="26"/><ellipse cx="-96" cy="-2" rx="34" ry="16"/></g>`
+  return `<use href="#cl" transform="translate(${x} ${y}) scale(${s})"/>`
 }
 
 function stars(): string {
@@ -417,9 +456,17 @@ function stars(): string {
     [1120, 70], [1300, 120], [1460, 60], [1540, 190], [340, 260], [760, 240], [1200, 250],
     [60, 300], [620, 320], [1000, 330], [1400, 300], [480, 110], [900, 250], [1380, 210], [200, 220],
   ]
-  return `<g class="stars">${pts
-    .map(([x, y], i) => `<circle class="star" cx="${x}" cy="${y}" r="${f(1.1 + (i % 3) * 0.6)}" fill="#fff" style="--d:${f((i * 0.37) % 4)}"/>`)
-    .join('')}<g transform="translate(760 90)"><path class="shoot" d="M0 0l46 -20" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity="0"/></g></g>`
+  // Stars of one size that twinkle on one beat are dots of one path.
+  const paths = new Map<string, string>()
+  pts.forEach(([x, y], i) => {
+    const key = `${i % 3} ${Math.floor(((i * 0.37) % 4) * 2) / 2}`
+    paths.set(key, `${paths.get(key) ?? ''}M${x} ${y}h0`)
+  })
+  const dots = [...paths].map(([key, d]) => {
+    const [size = '0', beat = '0'] = key.split(' ')
+    return `<path class="star" stroke-width="${f(2 * (1.1 + Number(size) * 0.6))}" d="${d}" style="--d:${beat}"/>`
+  }).join('')
+  return `<g class="stars" fill="none" stroke="#fff" stroke-linecap="round">${dots}<g transform="translate(760 90)"><path class="shoot" d="M0 0l46 -20" stroke-width="2" opacity="0"/></g></g>`
 }
 
 function farIsland(x: number, w: number): string {
@@ -468,7 +515,7 @@ function seagrass(cx: number, cy: number, h: number, phase: number): string {
 // it: three behind the front corals, four in front.
 function coralReef(x: number, y: number, s: number, isMirrored: boolean, salt: number): string {
   const fish = (i: number, cx: number, cy: number, range: number, rise: number, cls: string, size: number): string =>
-    `<g transform="translate(${cx} ${cy})" style="--r:${range}px;--q:${rise}px;--u:${f(7 + rnd(i, salt) * 6)}s;--d:${f(rnd(i, salt + 1) * 13)}"><g class="ox"><g class="oy"><g class="of"><path class="${cls}" transform="scale(${size})" d="M6 0Q1 -4 -5 0Q1 4 6 0ZM-4 0l-5 -3.5v7Z"/></g></g></g></g>`
+    `<g transform="translate(${cx} ${cy})" style="--r:${range}px;--q:${rise}px;--u:${f(7 + rnd(i, salt) * 6)}s;--d:${f(rnd(i, salt + 1) * 13)}"><g class="ox"><g class="oy"><g class="of"><use href="#rf" class="${cls}" transform="scale(${size})"/></g></g></g></g>`
   return `<g transform="translate(${x} ${y}) scale(${isMirrored ? -s : s} ${s})" opacity=".94">
 <ellipse class="rbase" cx="0" cy="12" rx="132" ry="24"/>
 ${fan(-54, 2, 36, 'k3')}${table(50, -8, 40, 'k5')}${branch(6, 0, 54, 's1')}
@@ -522,15 +569,15 @@ const TUFTS: [number, number, number][] = [
   [1232, 676, 0.8], [1256, 667, 1], [1338, 656, 0.9], [1352, 655, 0.7], [1488, 653, 1], [1503, 652, 0.75], [1626, 651, 0.9], [1306, 705, 0.8], [1476, 702, 0.7],
 ]
 
+// Four-pointed twinkles on the water, clones of three sizes of one star.
 function sparkles(): string {
   let out = ''
   for (let i = 0; i < 22; i++) {
     const x = Math.floor(rnd(i, 11) * W)
     const y = HORIZON + 30 + Math.floor(rnd(i, 12) * (H - HORIZON - 60))
-    const r = 2 + (i % 3)
-    out += `<path class="spark glint" d="M${x} ${y - r * 2} L${x + r * 0.5} ${y} L${x} ${y + r * 2} L${x - r * 0.5} ${y} Z M${x - r * 2} ${y} L${x} ${y + r * 0.5} L${x + r * 2} ${y} L${x} ${y - r * 0.5} Z" style="--d:${f(rnd(i, 13) * 5)}"/>`
+    out += `<g transform="translate(${x} ${y})"><use href="#k${2 + (i % 3)}" style="--d:${f(rnd(i, 13) * 5)}"/></g>`
   }
-  return out
+  return `<g class="spark glint">${out}</g>`
 }
 
 // The three kinds of boat, each drawn heading right around the middle of its
@@ -564,7 +611,7 @@ function leadBoat(flag: Flag, wake = ''): string {
     .map(([rx, ry, alpha]) => `<ellipse class="hG" cx="0" cy="10" rx="${rx}" ry="${ry}" fill="${patch(to, from)}" opacity="${alpha}"/>`)
     .join('')
   return `<g style="${vars}"><g class="hO" opacity="${shown(to)}">${glow}</g>
-<ellipse cx="0" cy="16" rx="34" ry="3" fill="#000" opacity=".12"/><g class="wk"><g ${wake}><path class="wake" d="M-38 8q-16 0 -34 5M-34 13q-12 2 -26 8"/></g></g>
+<ellipse cx="0" cy="16" rx="34" ry="3" fill="#000" opacity=".12"/><g class="wk"><g ${wake}><path class="wake" d="M-38 8q-16 0 -34 5M-34 13q-12 2 -26 8"/><path class="wake bio bwk" d="M-38 8q-16 0 -34 5M-34 13q-12 2 -26 8"/></g></g>
 <path d="M-36 0L36 0Q30 12 22 13L-22 13Q-30 12 -36 0Z" fill="#7a4f2c"/><path d="M-34 3.5H34" stroke="#f4e3c1" stroke-width="1.6"/>
 <line x1="0" y1="0" x2="0" y2="-88" stroke="#5a3b22" stroke-width="2"/>
 <path d="M-2 -72Q-30 -36 -38 -6L-2 -6Z" fill="#fdfdf8"/><path d="M2 -60Q22 -32 30 -6L2 -6Z" fill="#f2c14e"/>
@@ -589,7 +636,8 @@ function sailOf(boat: Boat): string {
 // holds the attributes that widen it as the boat comes about.
 function bowOf(boat: Boat, scale: number, turning: string): string {
   const view = boat.kind === 'lead' ? '#lB' : boat.kind === 'crew' ? `#cB" style="--s:${sailOf(boat)}` : '#sB'
-  return `<g ${turning}><g transform="scale(${scale})"><g class="boat"><use href="${view}"/></g></g></g>`
+  const bow = `<g class="boat"><use href="${view}"/></g>`
+  return `<g ${turning}>${scale === 1 ? bow : `<g transform="scale(${scale})">${bow}</g>`}</g>`
 }
 
 // The mascot at the stern of the lead boat, at the scale of its route. It is
@@ -643,7 +691,7 @@ function keyTimes(span: number, valuesAt: (at: number) => readonly number[], tol
 // How far keys may stray from a boat's way, in px: further in a plain scene,
 // which must stay small.
 function toleranceFor(isPlain: boolean): number {
-  return isPlain ? 2.5 : 1
+  return isPlain ? 3.5 : 1
 }
 
 // How clearly a boat shows through the haze over the horizon at height `y`.
@@ -744,7 +792,7 @@ function vessel(boat: Boat, seconds: number, flag: Flag, tolerance: number): { s
   // A roaming boat drifts near and far on its own beat, sized as it goes.
   const roaming = route.drift !== undefined
   const size = roaming ? 1 : route.scale
-  const boat0 = `<g class="bf"><g transform="scale(${size})"><g class="boat">${hullOf(boat, flag, fading)}</g></g></g>${bowOf(boat, size, 'class="bw"')}`
+  const boat0 = `<g class="bf">${size === 1 ? '' : `<g transform="scale(${size})">`}<g class="boat">${hullOf(boat, flag, fading)}</g>${size === 1 ? '' : '</g>'}</g>${bowOf(boat, size, 'class="bw"')}`
   const grown = sized === '' ? boat0 : `<g class="way" style="animation-name:${name}is">${boat0}</g>`
   const drift = roaming ? `;--v:${route.drift}s;--c:${f(age + lapStart(boat) + route.driftFrom * (route.drift ?? 0))};--z0:${sizesOf(boat)[0]};--z1:${sizesOf(boat)[1]}` : ''
   const lap = `<g style="--u:${route.seconds}s;--b:${f(age + lapStart(boat))};--r:${route.rx}px;--q:${route.ry}px;${bob}${drift}" transform="translate(${route.cx} ${route.cy})">
@@ -955,8 +1003,8 @@ const WHIRLPOOL = `<g transform="translate(860 562)" fill="none">${[58, 38, 18]
   .join('')}</g>`
 
 // Sea life, each drawn facing right around its own origin.
-const TURTLE = `<ellipse class="shade" cx="-10" cy="34" rx="46" ry="25"/>
-<g opacity=".9"><g class="tsk"><path class="flipA" style="transform-origin:16px -16px" d="M20 -15C30 -26 38 -42 34 -58C24 -50 12 -36 6 -20Z"/><path class="flipB" style="transform-origin:16px 16px" d="M20 15C30 26 38 42 34 58C24 50 12 36 6 20Z"/>
+const TURTLE = `<ellipse class="shade" cx="-4" cy="12" rx="44" ry="24"/>
+<g opacity=".72"><g class="tsk"><path class="flipA" style="transform-origin:16px -16px" d="M20 -15C30 -26 38 -42 34 -58C24 -50 12 -36 6 -20Z"/><path class="flipB" style="transform-origin:16px 16px" d="M20 15C30 26 38 42 34 58C24 50 12 36 6 20Z"/>
 <path d="M-26 -14C-36 -20 -46 -22 -52 -16C-46 -10 -36 -8 -28 -8ZM-26 14C-36 20 -46 22 -52 16C-46 10 -36 8 -28 8ZM-34 -2L-46 0L-34 2ZM26 -7C34 -9 44 -8 48 0C44 8 34 9 26 7Z"/></g>
 <circle class="teye" cx="42" cy="-3.8" r="1.4"/><circle class="teye" cx="42" cy="3.8" r="1.4"/>
 <path class="tsh" d="M30 0C30 -16 14 -24 -4 -24C-22 -24 -34 -12 -36 0C-34 12 -22 24 -4 24C14 24 30 16 30 0Z"/>
@@ -967,8 +1015,8 @@ const TURTLE = `<ellipse class="shade" cx="-10" cy="34" rx="46" ry="25"/>
 // short lobes flank the mouth.
 const MANTA_BODY = 'M47 -10C44 -15 38 -16 32 -18C18 -26 4 -46 -12 -80C-12 -58 -20 -34 -36 -12C-40 -6 -40 6 -36 12C-20 34 -12 58 -12 80C4 46 18 26 32 18C38 16 44 15 47 10C45 8 42 8 40 7Q35 0 40 -7C42 -8 45 -8 47 -10Z'
 
-const MANTA = `<path class="shade" transform="translate(-14 44)" d="${MANTA_BODY}"/>
-<g opacity=".82"><path class="mb" d="M-37 -1.5L-96 0L-37 1.5Z"/><g class="wingf"><path class="mb" d="${MANTA_BODY}"/><path class="mm" d="M22 -10C14 -21 4 -27 -8 -28C-2 -18 8 -11 22 -7ZM22 10C14 21 4 27 -8 28C-2 18 8 11 22 7Z"/></g></g>`
+const MANTA = `<path class="shade" transform="translate(-5 12) scale(.96)" d="${MANTA_BODY}"/>
+<g opacity=".5"><path class="mb" d="M-37 -1.5L-96 0L-37 1.5Z"/><g class="wingf"><path class="mb" d="${MANTA_BODY}"/><path class="mm" d="M22 -10C14 -21 4 -27 -8 -28C-2 -18 8 -11 22 -7ZM22 10C14 21 4 27 -8 28C-2 18 8 11 22 7Z"/></g></g>`
 
 const FIN = `<path class="fin" d="M13 0Q5 -19 -9 -26Q-7 -11 -13 0Z"/><path d="M-13 1q-24 1 -52 7M-11 3q-20 6 -40 14" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".5"/>`
 
@@ -980,7 +1028,7 @@ function school(cls: string, count: number, salt: number): string {
     const x = rnd(i, salt) * 200 - 100
     const y = rnd(i, salt + 1) * 80 - 40
     const s = 1.1 + rnd(i, salt + 2) * 0.7
-    out += `<g transform="translate(${f(x)} ${f(y)}) scale(${f(s)})"><path class="wig" style="--d:${f(rnd(i, salt + 3) * 1.3)}" d="M11 0Q3 -6 -8 0Q3 6 11 0ZM-7 0l-8 -5v10Z"/></g>`
+    out += `<g transform="translate(${f(x)} ${f(y)}) scale(${f(s)})"><use href="#sr" class="wig" style="--d:${f(rnd(i, salt + 3) * 1.3)}"/></g>`
   }
   return `<g class="${cls}" opacity=".88">${out}</g>`
 }
@@ -1014,12 +1062,13 @@ function pod(x: number, y: number, s: number, phase: number, turn: number): stri
 
 function seaLife(): string {
   return `<g>
-${pod(640, HORIZON + 46, 1, 0, 0)}${pod(700, HORIZON + 96, 1.5, 37, 2)}${pod(960, HORIZON + 68, 1.25, 20, 1)}
+${swimmer('R', HORIZON + 28, 560, 300, 1, `<g transform="scale(.37)">${WHALE_SHARK}</g>`)}
+${pod(640, HORIZON + 46, 1, 0, 0)}${pod(960, HORIZON + 68, 1.25, 20, 1)}${pod(700, HORIZON + 96, 1.5, 37, 2)}
 ${swimmer('L', HORIZON + 112, 270, 150, 1, FIN)}
-${swimmer('R', 740, 118, 20, 0.85, school('fishA', 9, 21), 66)}
-${swimmer('L', 850, 152, 96, 0.85, school('fishB', 7, 31))}
-${swimmer('R', 812, 230, 170, 0.7, `<g transform="scale(1.2)">${TURTLE}</g>`)}
 ${swimmer('L', 712, 196, 60, 0.7, `<g transform="scale(0.9)">${MANTA}</g>`, 128)}
+${swimmer('R', 740, 118, 20, 0.85, school('fishA', 9, 21), 66)}
+${swimmer('R', 812, 230, 170, 0.7, `<g transform="scale(1.2)">${TURTLE}</g>`)}
+${swimmer('L', 850, 152, 96, 0.85, school('fishB', 7, 31))}
 </g>`
 }
 
@@ -1532,17 +1581,24 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
     const ends: 0 | 1 = last !== undefined && isOnDeck(last) ? 1 : 0
     const isAtDeck = t >= span ? ends === 1 : deck.some(([from, to]) => t >= from && t < to)
     // Woken in the hammock or on the lounger, it sits up as it gets down, and
-    // what of it hangs below the hammock's cloth stays cut away.
-    const lying = lyingIn(voyage.clawd)
-    const getsUp = lying === undefined ? undefined : plan.clawd[0]
+    // what of it hangs below the hammock's cloth stays cut away. Called back
+    // part way down, it carries on from there: its getting up is timed as a
+    // whole that began `shift` seconds before this trip.
+    const rising = risingFrom(voyage.clawd)
+    const lying = rising?.bed
+    const getsUp = rising === undefined ? undefined : plan.clawd[0]
+    const shift = rising === undefined ? 0 : rising.u * RISE_S
+    const whole = span + shift
+    // When it began getting up, on that whole's clock.
+    const upFrom = getsUp === undefined ? 0 : getsUp.from
     const pose = lying === 'hammock' ? M_LYING : M_RECLINE
-    const lie = getsUp === undefined ? '' : once('vlie', span, t)
-    const upAt = getsUp === undefined ? 0 : lying === 'lounger' ? getsUp.from + 0.6 * (getsUp.to - getsUp.from) : getsUp.to
-    const sitsUp = getsUp === undefined ? '' : `@keyframes vlie{0%,${pct(getsUp.from, span)}{transform:${pose};animation-timing-function:ease-in-out}${pct(upAt, span)},100%{transform:none}}`
-    const turnAt = getsUp === undefined ? 0 : getsUp.from + 0.8 * (getsUp.to - getsUp.from)
+    const lie = getsUp === undefined ? '' : once('vlie', whole, t + shift)
+    const upAt = lying === 'lounger' ? upFrom + 0.6 * RISE_S : upFrom + RISE_S
+    const sitsUp = getsUp === undefined ? '' : `@keyframes vlie{0%,${pct(upFrom, whole)}{transform:${pose};animation-timing-function:ease-in-out}${pct(upAt, whole)},100%{transform:none}}`
+    const turnAt = upFrom + 0.8 * RISE_S
     const turnsFront = getsUp !== undefined && lying === 'lounger'
-    const turnsCss = !turnsFront ? '' : `@keyframes vfr{0%,${pct(turnAt, span)}{transform:scaleX(0)}${pct(getsUp.to, span)},100%{transform:scaleX(1)}}@keyframes vsd{0%,${pct(upAt, span)}{transform:scaleX(1)}${pct(turnAt, span)},100%{transform:scaleX(0)}}`
-    const turn = turnsFront ? { front: once('vfr', span, t), side: once('vsd', span, t) } : undefined
+    const turnsCss = !turnsFront ? '' : `@keyframes vfr{0%,${pct(turnAt, whole)}{transform:scaleX(0)}${pct(upFrom + RISE_S, whole)},100%{transform:scaleX(1)}}@keyframes vsd{0%,${pct(upAt, whole)}{transform:scaleX(1)}${pct(turnAt, whole)},100%{transform:scaleX(0)}}`
+    const turn = turnsFront ? { front: once('vfr', whole, t + shift), side: once('vsd', whole, t + shift) } : undefined
     const walking = tracked('vcp', span, t, now, walker(stepped('vgo', span, t), stepped('vst', span, t), lie, turn))
     const figure = lying === 'hammock' ? `<g clip-path="url(#hung)">${walking}</g>` : walking
     return {
@@ -1657,15 +1713,341 @@ const CRAB = (() => {
   }
   const css = `@keyframes crx{0%{transform:translateX(0)}${across}100%{transform:translateX(0)}}@keyframes crg{0%{opacity:0}${gait}}@keyframes crs{0%{opacity:1}${still}}@keyframes crc{${claws}100%{transform:rotate(0)}}
 @keyframes crk{0%,100%{transform:rotate(-9deg)}50%{transform:rotate(9deg)}}
-.crx{${loop('crx', whole, 'ease-in-out')}}.crg{${loop('crg', whole, 'step-end')}}.crs{${loop('crs', whole, 'step-end')}}.crc{${loop('crc', whole, 'ease-in-out')}}.crk{${loop('crk', 0.3, 'linear')}}`
-  const side = '<path class="crl" d="M-4 -3l-5 -2l-2 4M-3 -2l-5 1l-1 4M-2 -1l-3 3l1 3"/>'
+.crx,.crc{${loop('crx', whole, 'ease-in-out')}}.crg,.crs{${loop('crg', whole, 'step-end')}}.crc{animation-name:crc}.crs{animation-name:crs}.crk{${loop('crk', 0.3, 'linear')}}`
+  const side = '<path class="crl" d="M-6 -3.5q-4 -1 -5.5 1.5l-.5 2.5M-5 -2.5q-3 .5 -3.5 3l.2 1.5"/>'
   const legs = `${side}<g transform="scale(-1 1)">${side}</g>`
-  const claw = '<g transform="translate(-5 -6)"><g class="crc"><path class="crl" d="M0 0l-4 -4"/><path class="crb" d="M-4 -4q-5 -1 -4 -6q2 2 4 1q0 -3 2 -3q1 4 -2 8z"/></g></g>'
-  const svg = `<g transform="translate(${CRAB_HOME.x} ${CRAB_HOME.y})"><ellipse cy="1" rx="9" ry="1.6" class="sh"/><g class="crx">
+  const claw = '<g transform="translate(-6.5 -6)"><g class="crc"><path class="crl" d="M0 0q-2.5 -1.5 -3.5 -4.5"/><path class="crb" d="M-3.6 -4.2c-3.2 .4 -5 -2 -4.4 -4.8c.5 -2.2 2.6 -3.2 4.2 -2.4l-1.9 2.6l3.3 -1.3c1 1.9 .5 4.9 -1.2 5.9z"/></g></g>'
+  // A round shell with a shine, big eyes on short stalks that blink now and
+  // then, rosy cheeks and a small smile.
+  const eye = (x: number): string => `<circle cx="${x}" cy="-14.5" r="2.7" class="cre"/><circle cx="${x * 0.87}" cy="-14.1" r="1.5" fill="#2a1a12"/><circle cx="${x * 0.87 + 0.5}" cy="-14.7" r=".55" class="cre"/>`
+  const face = `<path class="crl" d="M-3 -9.5v-3M3 -9.5v-3"/><path class="crb" d="M-9 -2.5c-.6 -5.5 3.4 -8.5 9 -8.5s9.6 3 9 8.5c-.2 1.2 -1 1.6 -2.2 1.6h-13.6c-1.2 0 -2 -.4 -2.2 -1.6z"/><ellipse cx="-3.5" cy="-8.3" rx="2.6" ry="1.1" class="cre" opacity=".35" transform="rotate(-18 -3.5 -8.3)"/>
+<g class="mblink" style="--d:4">${eye(-3)}${eye(3)}</g><ellipse cx="-5.6" cy="-4.6" rx="1.6" ry=".9" class="crp"/><ellipse cx="5.6" cy="-4.6" rx="1.6" ry=".9" class="crp"/><path d="M-1.3 -5.2q1.3 1.1 2.6 0" stroke="#5a2414" stroke-width=".9" stroke-linecap="round" fill="none"/>`
+  const svg = `<g transform="translate(${CRAB_HOME.x} ${CRAB_HOME.y})"><ellipse cy="1" rx="11" ry="1.8" class="sh"/><g class="crx">
 <g class="crs">${legs}</g><g class="crg"><g transform="translate(0 -3)"><g class="crk"><g transform="translate(0 3)">${side}</g></g><g class="crk" style="--d:.15"><g transform="translate(0 3)"><g transform="scale(-1 1)">${side}</g></g></g></g></g>
-<path class="crl" d="M-2 -7v-4M2 -7v-4"/><ellipse cy="-5" rx="7" ry="4.2" class="crb"/><circle cx="-2" cy="-11.5" r="1.2" fill="#2a1a12"/><circle cx="2" cy="-11.5" r="1.2" fill="#2a1a12"/>
+${face}
 ${claw}<g transform="scale(-1 1)">${claw}</g></g></g>`
   return { svg, css }
+})()
+
+// A grey heron lives on two stretches of shore: the shallows just off the
+// front of the beach, and the back of the sand behind the palms. On each it
+// wades up and down with stepping legs, turns about, looks around, and
+// reaches down to drink or to stab at the water (in the shallows a ring
+// spreads from its beak). Twice a round it flies from one to the other: it
+// climbs away over the lagoon to the water villas, circles above them a few
+// times, larger on the near side of each circle, flies back over the island
+// and drops down onto the other shore. Taking off it crouches, rises with its
+// legs hanging and tucks them back; coming in it swings its legs forward and
+// settles. It is drawn twice: in flight and in the shallows among the near
+// things, in front of Clawd and the crab ashore, and on the back of the sand
+// among the far things, behind the palms; each copy is shown only where it
+// belongs. Its shallows, off the beach's far end, lie clear of the boats'
+// lanes and of where Clawd stands. The round takes its phase from the wall
+// clock.
+const HERON = (() => {
+  const round = 300
+  const at = (sec: number): string => String(Math.round((sec / round) * 1e4) / 100)
+  type Stop = [number, string, string?]
+  // One property's keyframes: at each second a value, and the timing from
+  // there to the next stop when it is not the round's own. All the stops
+  // that hold one value with one timing share a rule.
+  const keys = (name: string, prop: string, stops: Stop[]): string => {
+    const rules = new Map<string, string[]>()
+    for (const [t, v, timing] of stops) {
+      const body = `${prop}:${v}${timing === undefined ? '' : `;animation-timing-function:${timing}`}`
+      rules.set(body, [...(rules.get(body) ?? []), `${at(t)}%`])
+    }
+    return `@keyframes ${name}{${[...rules].map(([body, ats]) => `${ats.join(',')}{${body}}`).join('')}}`
+  }
+  const glide = 'ease-in-out'
+  const size = (y: number): number => Math.round((900 * depthScale(y)) / depthScale(774)) / 1000
+  type Spot = { x: number; y: number }
+  const front: Spot = { x: 1490, y: 786 }
+  const back: Spot = { x: 1450, y: 656 }
+  const X = (x: number): string => (x === front.x ? 'translateX(0)' : `translateX(${f(x - front.x)}px)`)
+  const Y = (y: number, k = size(y)): string => `translateY(${f(y - front.y)}px) scale(${k})`
+
+  // A stride: each foot is planted for `stance` of it, sliding back under the
+  // body as far as the body moves, then lifts, folds back at the heel and
+  // reaches forward again. A leg is hip, heel and foot; the heel bends
+  // backwards. Each stepping leg turns its upper part about the hip and its
+  // lower part about the heel, to angles worked out for each key, and keys
+  // through the stance are close enough that the planted foot holds still.
+  // Walks start on a stride's beat, where the legs stand as the still pose
+  // has them.
+  const stride = 1.2
+  const stance = 0.6
+  const reach = 10
+  type Joint = [number, number]
+  type Pose = [Joint, Joint, Joint]
+  const pose = (u: number, y: number): Pose => {
+    const [hx, hy, a, b] = [1, -30, 14.5, 16]
+    const [dx, dy] = [u, y - hy]
+    const d = Math.min(Math.hypot(dx, dy), a + b - 0.01)
+    const turn = Math.atan2(dy, dx) - Math.acos((a * a + d * d - b * b) / (2 * a * d))
+    return [[hx, hy], [hx + a * Math.cos(turn), hy + a * Math.sin(turn)], [hx + u, y]]
+  }
+  const planted = (k: number): Pose => pose(reach * (k / stance - 0.5), 0)
+  const gait: [number, Pose, string?][] = [...[0, 0.25, 0.5].map((k): [number, Pose] => [k, planted(k)]), [stance, planted(stance), glide], [0.78, pose(1, -8), glide], [0.9, pose(-6.5, -3), glide], [1, planted(0)]]
+  const path = (p: Pose): string => `M${p.map(([x, y]) => `${f(x)} ${f(y)}`).join('L')}`
+  const angle = ([x0, y0]: Joint, [x1, y1]: Joint): number => (Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI
+  const bend = (name: string, turn: (p: Pose) => number): string => `@keyframes ${name}{${gait.map(([k, p, timing]) => `${f(k * 100)}%{transform:rotate(${f(turn(p))}deg)${timing === undefined ? '' : `;animation-timing-function:${timing}`}}`).join('')}}`
+  const walk = (cycles: number, y: number): number => (cycles * reach * size(y)) / stance
+
+  const xs: Stop[] = [[0, X(front.x)]]
+  const ys: Stop[] = [[0, Y(front.y)]]
+  const faces: Stop[] = [[0, 'scaleX(-1)']]
+  let facing = -1
+  const face = (from: number, to: number, way: number): void => {
+    faces.push([from, `scaleX(${facing})`], [to, `scaleX(${way})`])
+    facing = way
+  }
+  const walks: [number, number][] = []
+  // Its wades on a shore: when each starts and how many strides it takes,
+  // to the left when negative. It turns about just before a wade the other
+  // way.
+  const wade = (home: Spot, plan: [number, number][]): void => {
+    let x = home.x
+    for (const [start, cycles] of plan) {
+      const way = cycles < 0 ? 1 : -1
+      if (way !== facing) face(start - 0.3, start, way)
+      const end = start + Math.abs(cycles) * stride
+      const to = x + Math.sign(cycles) * walk(Math.abs(cycles), home.y)
+      xs.push([start, X(x)], [end, X(to)])
+      walks.push([start, end])
+      x = to
+    }
+  }
+  // A flight from one shore to the other: up to the right end of a circle
+  // over the villas, round it, and from its left end back over the lagoon to
+  // hang above the other shore and drop onto it, turning about at each end of
+  // the circle. Sideways and up and down each ease in and out between the
+  // circle's ends, so the circles are smooth with few keys.
+  const sky = { x: 260, y: 392, rx: 150, ry: 28, k: 0.62 }
+  const lap = 8
+  const laps = 3
+  const [climb, cruise, drop] = [14, 16, 2.4]
+  // How long before hanging over the back of the sand the heron passes in
+  // behind the island's palms, and how long after leaving it it is clear of
+  // them again.
+  const [FAR_IN, FAR_OUT] = [7, 6]
+  const flights: [number, number][] = []
+  const fly = (start: number, from: Spot, to: Spot): number => {
+    const top = start + climb
+    xs.push([start, X(from.x), glide], [top, X(sky.x + sky.rx), glide])
+    ys.push([start, Y(from.y), 'ease-out'])
+    for (let n = 0; n < laps; n++) {
+      const lapStart = top + n * lap
+      if (n > 0) {
+        xs.push([lapStart, X(sky.x + sky.rx), glide])
+        face(lapStart - 0.3, lapStart + 0.3, 1)
+      }
+      xs.push([lapStart + lap / 2, X(sky.x - sky.rx), glide])
+      face(lapStart + lap / 2 - 0.3, lapStart + lap / 2 + 0.3, -1)
+      ys.push([lapStart + lap / 4, Y(sky.y - sky.ry, sky.k * 0.92), glide], [lapStart + (lap * 3) / 4, Y(sky.y + sky.ry, sky.k * 1.08), glide])
+    }
+    const over = top + (laps - 1) * lap + (lap * 3) / 4 + cruise
+    const end = over + drop
+    xs.push([over, X(to.x)])
+    ys.push([over, Y(to.y - 80, size(to.y)), glide], [end, Y(to.y)])
+    flights.push([start, end])
+    return end
+  }
+  const leave = 96
+  wade(front, [[9.6, -3], [21.6, 5], [39.6, 1], [50.4, -4], [70.8, -2], [78, 4], [90, -1]])
+  const landed = fly(leave, front, back)
+  wade(back, [[154.8, 3], [166.8, 2], [180, -6], [194.4, -2], [205.2, 4], [220.8, 2], [234, -3]])
+  const away = 245.6
+  fly(away, back, front)
+  xs.push([round, X(front.x)])
+  ys.push([round, Y(front.y)])
+  faces.push([round, 'scaleX(-1)'])
+
+  // Shown in one pose or the other: standing outside the flights, flying in
+  // them, its legs stepping only while it wades. One copy is shown at a time:
+  // the far one from coming in over the island to the back of the sand until
+  // it has left the island again, the near one otherwise. Each hand-over
+  // falls where the heron is out over open water, with nothing drawn between
+  // the copies near it.
+  const swap = (name: string, spans: [number, number][], shown: 0 | 1): string => keys(name, 'opacity', [[0, `${shown}`], ...spans.flatMap(([a, b]): Stop[] => [[a, `${1 - shown}`], [b, `${shown}`]])])
+  const behind: [number, number][] = [[landed - drop - FAR_IN, away + FAR_OUT]]
+  // Leaning in from the hips and reaching down with the neck to strike or to
+  // drink, the head lifted to look about, a crouch before each take-off, a
+  // settle after each landing.
+  const rot = (deg: number): string => (deg === 0 ? 'rotate(0)' : `rotate(${deg}deg)`)
+  const stabs = [16.2, 44.1, 66, 86.1]
+  const sips = [161.4, 190.5, 214.2, 227.1]
+  const looks: [number, number, number][] = [[3, 7.2, 12], [31.5, 36, 12], [59.1, 63.9, -10], [172.2, 177, -10], [199.2, 203.1, 12]]
+  const body: Stop[] = [[0, rot(-12)], [0.9, rot(0)], [round, rot(-12)]]
+  const neck: Stop[] = [[0, rot(0)], [round, rot(0)]]
+  for (const t of [...stabs, ...sips]) {
+    body.push([t - 0.3, rot(0)], [t, rot(-34)], [t + 0.6, rot(-34)], [t + 1.8, rot(0)])
+    neck.push([t - 0.3, rot(0)], [t, rot(-70)], [t + 0.6, rot(-70)], [t + 1.8, rot(0)])
+  }
+  for (const [a, b, deg] of looks) neck.push([a, rot(0)], [a + 0.9, rot(deg)], [b - 0.9, rot(deg)], [b, rot(0)])
+  for (const t of [leave, away]) body.push([t - 0.6, rot(0)], [t, rot(-18)])
+  body.push([landed, rot(-12)], [landed + 0.9, rot(0)])
+  // In flight: legs hanging at take-off and tucked back, swung forward to
+  // land; the body pitched up as it climbs away and as it comes in.
+  const legs: Stop[] = [[0, rot(80)]]
+  const pitch: Stop[] = [[0, rot(0)]]
+  for (const [a, b] of flights) {
+    legs.push([a, rot(80), glide], [a + 1.8, rot(0)], [b - 1.8, rot(0), glide], [b, rot(105)])
+    pitch.push([a, rot(16), glide], [a + 2.1, rot(0)], [b - 1.5, rot(0), glide], [b, rot(22)])
+  }
+  const rings = stabs.flatMap((t): Stop[] => [[t, 'scale(.2);opacity:0'], [t + 0.3, 'scale(.3);opacity:.9'], [t + 2.1, 'scale(1.4);opacity:0']])
+  const css = `${keys('hpx', 'transform', xs)}${keys('hpy', 'transform', ys)}${keys('hpf', 'transform', faces)}
+${swap('hpo', flights, 1)}${swap('hpa', flights, 0)}${swap('hpg', walks, 0)}${swap('hpq', walks, 1)}${swap('hzn', behind, 1)}${swap('hzb', behind, 0)}
+${keys('hrb', 'transform', body)}${keys('hrn', 'transform', neck)}${keys('hfg', 'transform', legs)}${keys('hfp', 'transform', pitch)}
+${keys('hrr', 'transform', [[0, 'scale(.2);opacity:0'], ...rings, [round, 'scale(1.4);opacity:0']])}
+@keyframes hfl{0%,100%{transform:scaleY(1)}50%{transform:scaleY(-.55)}}${bend('hlt', ([hip, heel]) => angle(hip, heel) - 90)}${bend('hls', ([hip, heel, foot]) => angle(heel, foot) - angle(hip, heel))}
+${['hpx', 'hpy', 'hpf', 'hfg', 'hfp'].map(name => `.${name}`).join()}{${loop('hpx', round, 'linear')}}${['hpo', 'hpa', 'hpg', 'hpq', 'hzn', 'hzb'].map(name => `.${name}`).join()}{${loop('hpo', round, 'step-end')}}.hrb,.hrn,.hrr{${loop('hrb', round, 'ease-in-out')}}
+${['hpy', 'hpf', 'hfg', 'hfp', 'hpa', 'hpg', 'hpq', 'hzn', 'hzb', 'hrn', 'hrr'].map(name => `.${name}{animation-name:${name}}`).join('')}.hrb{transform-origin:3px -30px}.hrn{transform-origin:-5px -46px}.hfg{transform-origin:14px 0}.hfl{transform-origin:0 -2px;${loop('hfl', 0.7, 'ease-in-out')}}.hlt,.hls{${loop('hlt', stride, 'linear')}}.hls{animation-name:hls;transform-origin:1px -15.5px}.hlt{transform-origin:1px -30px}`
+  const head = `<path d="M-5 -46C-11 -52 -3 -58 -7 -64" fill="none" class="hrk" stroke-width="5" stroke-linecap="round"/><path d="M-8.5 -53l-1 2M-7.5 -49l-1 2" stroke="#3a4148" stroke-width="1" stroke-linecap="round"/><circle cx="-7" cy="-65" r="3.6" class="hrh"/><path d="M-6 -67Q0 -67.5 7 -63.5" fill="none" stroke="#23282d" stroke-width="1.2" stroke-linecap="round"/><path d="M-10 -66L-23 -64.3L-10 -63.2Z" fill="#e9a43c"/><circle cx="-8.4" cy="-65.6" r=".9" fill="#1b1f22"/>`
+  const torso = `<path d="M-8 -44C-9 -52 0 -54 10 -48C18 -43 23 -34 21 -28C13 -27 2 -30 -4 -36C-7 -39 -8 -41 -8 -44Z" class="hrg"/><path d="M-2 -46C7 -49 16 -43 21 -30C14 -31 5 -36 -2 -46Z" class="hrw"/><path d="M14 -36C18 -33 21 -30 22 -27L15 -30Z" fill="#30383e"/>`
+  const leg = (d: string, extra = ''): string => `<path d="${d}" fill="none" class="hrl" stroke-width="1.6" stroke-linecap="round"${extra}/>`
+  const step = (thigh: string, shin: string, delay = ''): string => `<g class="hlt"${delay}>${thigh}<g class="hls">${shin}</g></g>`
+  // The still legs stand where the stepping ones are on a stride's beat: the
+  // first foot just planted ahead, the second most of the way back.
+  const ahead = planted(0)
+  const second = planted(0.5)
+  // The heron, from its parts: the near copy draws them, the far copy clones
+  // them; every moving part is a group of its own, so both copies move as
+  // one.
+  const stand = (still: string, thigh: string, shin: string, body: string, face: string): string => `<g class="hpq">${still}</g><g class="hpg">${step(thigh, shin)}<g transform="translate(4 0)">${step(thigh, shin, ` style="--d:${stride / 2}"`)}</g></g><g class="hrb">${body}<g class="hrn">${face}</g></g>`
+  const standing = `<g class="hpo"><ellipse cy="-1" rx="13" ry="2.4" class="foam" fill="none" stroke-width="1.4" opacity=".6"/><g transform="translate(-33 -4)"><ellipse rx="9" ry="2.2" class="foam hrr" fill="none" stroke-width="1.6"/></g>
+${stand(`<g id="hQ">${leg(path(ahead))}<g transform="translate(4 0)">${leg(path(second))}</g></g>`, leg('M1 -30V-15.5', ' id="hU"'), leg('M1 -15.5V.5', ' id="hV"'), `<g id="hT">${torso}</g>`, `<g id="hH">${head}</g>`)}</g>`
+  const far = stand('<use href="#hQ"/>', '<use href="#hU"/>', '<use href="#hV"/>', '<use href="#hT"/>', '<use href="#hH"/>')
+  // In flight, facing left: neck drawn in, legs from the hip, one wing beating.
+  const soar = (legs: string, body: string, wing: string): string => `<g class="hpa" opacity="0"><g transform="translate(0 -32)"><g class="hfp"><g class="hfg">${legs}</g>${body}<g class="hfl">${wing}</g></g></g></g>`
+  const flying = soar(leg('M14 0L36 3M14 1L36 5', ' id="hL"'), `<g id="hB"><path d="M-12 -2C-10 -8 2 -9 14 -4C17 -2 17 2 14 3C2 5 -8 4 -12 -2Z" class="hrg"/><path d="M-9 -3C-14 -2 -17 -4 -16 -8" fill="none" class="hrk" stroke-width="6" stroke-linecap="round"/><circle cx="-16.5" cy="-9" r="3.4" class="hrh"/><path d="M-19.5 -10L-32 -8.4L-19.5 -7.2Z" fill="#e9a43c"/><circle cx="-17.6" cy="-9.6" r=".8" fill="#1b1f22"/><path d="M-15.5 -11.4Q-9 -12.2 -4 -9.5" fill="none" stroke="#23282d" stroke-width="1.1" stroke-linecap="round"/></g>`, '<g id="hW"><path d="M-8 -2C-12 -14 -6 -28 8 -36C14 -26 16 -12 13 -2Z" class="hrw"/><path d="M-7 -14C-5 -24 0 -32 8 -36C9 -30 7 -22 4 -16Z" fill="#2f363c"/></g>')
+  const place = (inner: string): string => `<g transform="translate(${front.x} ${front.y})"><g class="hpx"><g class="hpy"><g class="hpf">${inner}</g></g></g></g>`
+  return { svg: place(`<g class="hzn">${standing}${flying}</g>`), back: place(`<g class="hzb" opacity="0"><g class="hpo">${far}</g>${soar('<use href="#hL"/>', '<use href="#hB"/>', '<use href="#hW"/>')}</g>`), css }
+})()
+
+// A hermit crab ambles along the back of the sand among the palms, facing
+// the way it goes, rests between ambles, and now and then pulls itself into
+// its shell for a while before it peeks out again. Its round is fixed and takes
+// its phase from the wall clock, like the crab's.
+const HERMIT_HOME = { x: 1462, y: 667 }
+const HERMIT = (() => {
+  const [lo, hi] = [1404, 1532]
+  const pace = 7
+  let t = 0
+  let x = HERMIT_HOME.x
+  let facing = 1
+  let moves = '0%{transform:translateX(0)}'
+  let faces = '0%{transform:scaleX(1)}'
+  let gait = '0%{opacity:0}'
+  let still = '0%{opacity:1}'
+  let hides = '0%{transform:scale(1)}'
+  const stops: { from: number; to: number; x: number; walk: boolean; hide: boolean }[] = []
+  for (let i = 0; i < 5; i++) {
+    const rest = 4 + rnd(i, 421) * 9
+    stops.push({ from: t, to: t + rest, x, walk: false, hide: rnd(i, 427) < 0.5 && rest > 7 })
+    t += rest
+    let next = i === 4 ? HERMIT_HOME.x : lo + rnd(i, 423) * (hi - lo)
+    if (i < 4 && Math.abs(next - x) < 20) next = x + (x < (lo + hi) / 2 ? 1 : -1) * (20 + rnd(i, 425) * 40)
+    const walk = Math.abs(next - x) / pace
+    stops.push({ from: t, to: t + walk, x: next, walk: true, hide: false })
+    t += walk
+    x = next
+  }
+  const whole = Math.round(t * 10) / 10
+  const at = (sec: number): string => f((sec / whole) * 100)
+  let before = HERMIT_HOME.x
+  for (const stop of stops) {
+    if (stop.walk) {
+      const heading = stop.x >= before ? 1 : -1
+      if (heading !== facing) {
+        faces += `${at(stop.from)}%{transform:scaleX(${heading})}`
+        facing = heading
+      }
+      moves += `${at(stop.from)}%{transform:translateX(${Math.round(before - HERMIT_HOME.x)}px)}${at(stop.to)}%{transform:translateX(${Math.round(stop.x - HERMIT_HOME.x)}px)}`
+      gait += `${at(stop.from)}%{opacity:1}${at(stop.to)}%{opacity:0}`
+      still += `${at(stop.from)}%{opacity:0}${at(stop.to)}%{opacity:1}`
+    } else if (stop.hide) {
+      const into = stop.from + 1
+      const out = stop.to - 1.5
+      hides += `${at(into)}%{transform:scale(1)}${at(into + 0.3)}%{transform:scale(0)}${at(out)}%{transform:scale(0)}${at(out + 0.6)}%{transform:scale(.6)}${at(out + 1.1)}%{transform:scale(.6)}${at(out + 1.4)}%{transform:scale(1)}`
+    }
+    before = stop.x
+  }
+  // Its legs step only while it walks; the shell rocks a little as they do.
+  const css = `@keyframes hmx{${moves}100%{transform:translateX(0)}}@keyframes hmf{${faces}}@keyframes hmg{${gait}}@keyframes hmq{${still}}@keyframes hmh{${hides}100%{transform:scale(1)}}@keyframes hmk{0%,100%{transform:rotate(-12deg)}50%{transform:rotate(12deg)}}
+.hmx,.hmh{${loop('hmx', whole, 'ease-in-out')}}.hmf,.hmg,.hmq{${loop('hmf', whole, 'step-end')}}.hmh{transform-origin:5px -6px;animation-name:hmh}.hmg{animation-name:hmg}.hmq{animation-name:hmq}.hmk{transform-origin:4px -4px;${loop('hmk', 0.45, 'linear')}}`
+  const legs = '<path class="hml" d="M3 -2l4 1.5l1.5 2.5M4 -4l5 0l2 2.5M6 -6l5 -1.5l2.5 2"/>'
+  const out = `<g class="hmh"><g class="hmq">${legs}</g><g class="hmg"><g class="hmk">${legs}</g></g><path class="hml" stroke-width="1" d="M8 -10l.5 -4.5M10 -9.5l1.5 -4"/><circle cx="8.5" cy="-15" r="1.3" fill="#1b1f22"/><circle cx="11.6" cy="-14" r="1.3" fill="#1b1f22"/><path d="M5 -9C8 -10 11 -9 11 -7C11 -5 8 -4 5 -5ZM8.5 -8C12 -12.5 18.5 -11.5 19 -7C16.5 -7.6 14.5 -6.6 14 -4.6C12.5 -3 9 -4.4 8.5 -8Z" class="hmo"/></g>`
+  // A turban shell, its whorls rising to a point behind.
+  const shell = '<path d="M-10 0C-12 -6 -9 -11 -4 -14C-1 -18 2 -19 3 -17C6 -14 7 -8 6 0ZM-1 -18.5L1 -21L3 -17.5Z" class="hmc"/><path d="M-9.5 -3Q-2 -6 6 -3.5M-8 -8Q-2 -10.5 6.3 -8.5M-5 -12.5Q0 -14 4.5 -13" fill="none" class="hms" stroke-width="1.1" stroke-linecap="round"/>'
+  const svg = `<g transform="translate(${HERMIT_HOME.x} ${HERMIT_HOME.y}) scale(.85)"><g class="hmx"><g class="hmf"><ellipse cy=".8" rx="11" ry="1.8" class="sh"/>${out}${shell}</g></g></g>`
+  return { svg, css }
+})()
+
+// A whale shark feeding at the surface far out, where the deep water hides
+// all of it below the waterline: the broad spotted top of its back, its tall
+// dorsal fin, the tip of its tail far behind, and the ripples it pushes. It
+// passes through only once in a long while.
+const WHALE_BACK = 'M-78 1C-40 -6 40 -9 88 -4C96 -3 100 -1 101 1Z'
+const WHALE_SHARK = `<path d="${WHALE_BACK}" class="wsb"/><path d="${WHALE_BACK}" fill="url(#wsp)"/><path d="M26 -3Q18 -27 -1 -37Q4 -19 -6 -4ZM-112 1Q-118 -15 -131 -27Q-128 -12 -124 1Z" class="wsd"/><path d="M101 2q14 1 24 5M-80 3q-26 2 -50 8M-126 3q-16 2 -30 7" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".55"/>`
+
+// Specks of glowing plankton in the shallows round the island after dark,
+// in three sets that brighten and fade out of step.
+const PLANKTON = (() => {
+  const sets = ['', '', '']
+  for (let i = 0; i < 36; i++) {
+    const x = 1185 + rnd(i, 431) * 420
+    const y = 754 + rnd(i, 433) * 30 - Math.max(0, 1260 - x) * 0.55
+    sets[i % 3] += `M${Math.round(x)} ${Math.round(y)}h0`
+  }
+  return sets.map((d, k) => `<path class="bip" stroke-width="${2 + k * 0.6}" d="${d}" style="--d:${k}"/>`).join('')
+})()
+
+// Two baby blacktip reef sharks circle the water villas at the surface. They
+// share a round on the boats' looping course classes (`bx`, `by`, `bf`, timed
+// by the wall clock), shrinking on the far side as `ps` follows `by`,
+// the smaller a little behind and to one side: behind the villas on the far
+// side of it, out in front of their pier on the near. Two small shoals mill on
+// the near side. As the sharks come by each, the fish dart off ahead of them
+// and, turning round, drift back together once they have passed.
+const SHARK_ROUND = { x: 300, y: 604, rx: 290, ry: 44, seconds: 40 }
+
+// Where the shark is on its round at `lap` (0 to 1), mirroring `ox` and `oy`.
+function sharkAt(lap: number): Point {
+  const { x, y, rx, ry } = SHARK_ROUND
+  const ease = (p: number): number => eased([0.42, 0, 0.58, 1], p)
+  const dx = lap < 0.5 ? -1 + 2 * ease(lap / 0.5) : 1 - 2 * ease((lap - 0.5) / 0.5)
+  const q = lap % 0.5
+  const dy = (lap < 0.5 ? -1 : 1) * (q < 0.25 ? ease(q / 0.25) : 1 - ease((q - 0.25) / 0.25))
+  return { x: x + rx * dx, y: y + ry * dy }
+}
+
+const SHOALS = (() => {
+  const round = SHARK_ROUND.seconds
+  let css = ''
+  let svg = ''
+  ;[0.64, 0.86].forEach((lap, k) => {
+    const at = sharkAt(lap)
+    // Each shoal's loop starts a second before its shark arrives, so its
+    // keyframes never wrap round the end of the lap. Offsets add a whole lap
+    // to stay positive: a loop with a positive delay has not started yet.
+    const start = lap * round - 1
+    const pct = (sec: number): string => f((sec / round) * 100)
+    const name = `fsh${k}`
+    css += `@keyframes ${name}{0%,${pct(0.4)}%{transform:translate(0,0)}${pct(1.2)}%,${pct(5)}%{transform:translate(var(--x),var(--y))}${pct(9)}%,100%{transform:translate(0,0)}}@keyframes fh${k}{0%,${pct(5)}%,${pct(9.4)}%,100%{transform:scaleX(1)}${pct(5.4)}%,${pct(9)}%{transform:scaleX(-1)}}.${name}>*{${loop(name, round, 'ease-out')}}.${name} use{transform-box:fill-box;transform-origin:center;${loop(`fh${k}`, round, 'linear')}}`
+    let fish = ''
+    for (let i = 0; i < 6; i++) {
+      const ox = (rnd(i, 441 + k) - 0.5) * 40
+      const oy = (rnd(i, 443 + k) - 0.5) * 20
+      const away = oy < 0 ? -1 : 1
+      fish += `<g style="--d:${f(rnd(i, 445) * 1.3 + round - start)};--x:${f(-18 - rnd(i, 447) * 26)}px;--y:${f(away * (16 + rnd(i, 449) * 22))}px"><use href="#sf" x="${f(ox)}" y="${f(oy)}"/></g>`
+    }
+    svg += `<g transform="translate(${f(at.x)} ${f(at.y + 2)})"><g class="wander fishA ${name}" style="--d:${k * 4}">${fish}</g></g>`
+  })
+  // The trailing shark's offset adds a whole lap, for the same reason.
+  const pup = (lag: number, at: string, scale: number): string => `<g style="--u:${round}s;--b:calc(var(--t) + ${round - lag});--r:${SHARK_ROUND.rx}px;--q:${SHARK_ROUND.ry}px;--d:${lag}" transform="translate(${SHARK_ROUND.x} ${SHARK_ROUND.y})"><g class="bx"><g class="by"><g transform="translate(${at})"><g class="bf"><g class="ps"><g transform="scale(${scale})"><use href="#pup"/></g></g></g></g></g></g></g>`
+  const shark = pup(0, '0 0', 0.62) + pup(1.6, '0 20', 0.54)
+  return { css, svg: svg + shark }
 })()
 
 // The beach: a long spit of sand from its tip on the left out past the right
@@ -1706,7 +2088,6 @@ const FIRE_ART = `<g transform="translate(${FIRE.x} ${FIRE.y})"><path d="M-10 2L
 <g class="fire"><circle cy="-8" r="34" fill="#ff9f43" opacity=".12"/><circle cy="-8" r="19" fill="#ff9f43" opacity=".16"/>
 <path class="flame" d="M0 -18Q8 -8 5 -2Q0 2 -5 -2Q-8 -8 0 -18Z" fill="#ff8f1f"/><path class="flame" style="--d:.3" d="M0 -10Q4 -5 2.5 -1.5Q0 .5 -2.5 -1.5Q-4 -5 0 -10Z" fill="#ffe08a"/></g></g>`
 
-const FLYER = `<path class="ffw" d="M4 -2Q-4 -18 -16 -20Q-8 -10 -4 -1ZM4 2Q-2 12 -12 14Q-6 7 -4 1Z"/><path class="ff" d="M16 0Q6 -5 -10 -1L-18 -7L-15 0L-18 6L-10 1Q6 5 16 0Z"/>`
 
 // A shoal of flying fish: each skips twice across the water, once, as the
 // scene is drawn.
@@ -1716,11 +2097,9 @@ function flyingFish(): string {
   ]
   return shoal
     .map(([x, y, s, d]) => {
-      const at = `style="animation-delay:${d}s"`
-      const rings = [14, 220, 426]
-        .map((cx, k) => `<ellipse class="ffs" cx="${cx}" cy="0" rx="14" ry="3.5" style="animation-delay:${f(d + 0.1 + k * 1.4)}s"/>`)
-        .join('')
-      return `<g transform="translate(${x} ${y}) scale(${s})"><g clip-path="url(#surf)"><g class="ffX" ${at}><g class="ffY" ${at}><g class="ffR" ${at}>${FLYER}</g></g></g></g>${rings}</g>`
+      // `--f` is when the fish leaps, `--k` which of its splashes a ring is.
+      const rings = [14, 220, 426].map((cx, k) => `<ellipse class="ffs" cx="${cx}" rx="14" ry="3.5" style="--k:${k}"/>`).join('')
+      return `<g transform="translate(${x} ${y}) scale(${s})" style="--f:${d}"><g clip-path="url(#surf)"><g class="ffX"><g class="ffY"><g class="ffR"><use href="#fy"/></g></g></g></g>${rings}</g>`
     })
     .join('')
 }
@@ -1744,20 +2123,25 @@ function fireworkGlow(age: number): string {
 
 // The bursts in the sky, `age` seconds into the show: a scene drawn again
 // while they go on carries on from where the last one was.
+// Every burst is the same spray of spokes, drawn once and cloned in each
+// burst's colour.
+const SPOKES = (() => {
+  let lines = ''
+  let tips = ''
+  for (let k = 0; k < 18; k++) {
+    const a = (k / 18) * Math.PI * 2
+    const [x2, y2] = [f(Math.cos(a) * 110), f(Math.sin(a) * 110)]
+    lines += `M${f(Math.cos(a) * 30)} ${f(Math.sin(a) * 30)}L${x2} ${y2}`
+    tips += `<circle cx="${x2}" cy="${y2}" r="4"/>`
+  }
+  return `<defs><g id="fwk"><path d="${lines}"/>${tips}</g></defs>`
+})()
+
 function fireworks(age: number): string {
-  return BURSTS
-    .map(({ x, y, c, d }) => {
-      let spokes = ''
-      for (let k = 0; k < 18; k++) {
-        const a = (k / 18) * Math.PI * 2
-        const x2 = f(Math.cos(a) * 110)
-        const y2 = f(Math.sin(a) * 110)
-        spokes += `<line x1="${f(Math.cos(a) * 30)}" y1="${f(Math.sin(a) * 30)}" x2="${x2}" y2="${y2}"/><circle cx="${x2}" cy="${y2}" r="4"/>`
-      }
-      return `<g transform="translate(${x} ${y})">
+  return SPOKES + BURSTS
+    .map(({ x, y, c, d }) => `<g transform="translate(${x} ${y})">
 <line class="trail" x1="0" y1="0" x2="0" y2="40" stroke="${c}" stroke-width="3" stroke-linecap="round" style="animation-delay:${f(d - age)}s"/>
-<g class="fw" stroke="${c}" fill="${c}" stroke-width="3" stroke-linecap="round" style="animation-delay:${f(d + 0.6 - age)}s">${spokes}</g></g>`
-    })
+<g class="fw" stroke="${c}" fill="${c}" stroke-width="3" stroke-linecap="round" style="animation-delay:${f(d + 0.6 - age)}s"><use href="#fwk"/></g></g>`)
     .join('')
 }
 
@@ -1833,7 +2217,7 @@ ${bungalow(90, 563, 0.95)}${bungalow(255, 563, 1)}${bungalow(420, 563, 0.95)}`
   const isle = ISLE
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">
-<style>${styleFor(scheme)}${CRAB.css}${boats.css}${pair.css}${around.css}</style>
+<style>${styleFor(scheme)}${CRAB.css}${HERON.css}${HERMIT.css}${SHOALS.css}${boats.css}${pair.css}${around.css}</style>
 ${DEFS}
 <g class="${mood}" style="--t:${f(seconds % 100000)}">
 <rect width="${W}" height="${HORIZON + 2}" fill="url(#sky)"/>
@@ -1861,6 +2245,7 @@ ${coralReef(400, 850, 1.1, false, 71)}${coralReef(920, 852, 1, true, 77)}${coral
 ${seaLife()}
 <g><g class="wvs">${waves()}</g>${state.isCompacting ? WHIRLPOOL : ''}</g>
 <ellipse class="halo" cx="260" cy="570" rx="380" ry="70" fill="url(#halo)" opacity=".85"/>
+${SHOALS.svg}
 <g opacity=".18" class="reflit" filter="url(#soft)" transform="translate(0 1184) scale(1 -1)"><use href="#pier"/></g>
 <g id="pier">${pier}</g>
 <ellipse class="halo" cx="${isle + 90}" cy="705" rx="540" ry="135" fill="url(#halo)"/>
@@ -1868,10 +2253,13 @@ ${seaLife()}
 <path d="${beach(44)}" class="shoal" opacity=".75" filter="url(#blur6)"/>
 <path d="${beach(26)}" fill="none" class="foam foamline" stroke-width="2" opacity=".4" style="--d:4"/>
 <path d="${beach(13)}" fill="none" class="foam foamline" stroke-width="3" opacity=".75"/>
+<g class="bio" fill="none"><path d="${beach(15)}" class="biw" stroke-width="12" filter="url(#blur6)"/><path d="${beach(13)}" class="bil" stroke-width="3"/>${PLANKTON}</g>
 <path d="${beach(7)}" class="wet"/><path d="${beach(0)}" fill="url(#sand)"/><path d="${beach(0)}" fill="url(#grain)" opacity=".5"/>
 ${JETTY_ART}
 ${TUFTS.map(([x, y, k]) => `<use href="#tuft" transform="translate(${x} ${y}) scale(${k})"/>`).join('')}
 ${star5(isle - 18, 743, 7)}${star5(isle + 178, 745, 6)}
+${HERON.back}
+${HERMIT.svg}
 ${palm(isle + 192, 682, 0.8, 44, 4.1)}${palm(isle - 70, 686, 0.95, -30, 0)}${palm(isle + 20, 690, 1.15, 26, 2.2, true)}
 <use href="#shrub" transform="translate(${isle - 89} 703)"/><use href="#shrub" transform="translate(${isle + 80} 700) scale(-.82 .82)"/>
 <path d="M${isle + 77} 708q-10 -28 0 -58q10 30 0 58z" fill="#ff9f43"/><path d="M${isle + 77} 706v-54" stroke="#fff" stroke-width="1.6"/>
@@ -1879,8 +2267,9 @@ ${BAR_ART}${LOUNGER_ART}
 ${pair.early}
 <g><path class="ham" d="M${isle - 75} 610Q${isle - 24} 668 ${isle + 23} 616Q${isle - 24} 642 ${isle - 75} 610Z"/><path d="M${isle - 75} 610Q${isle - 24} 657 ${isle + 23} 616" fill="none" stroke="#ef6f5e" stroke-width="2.2"/></g>
 ${FIRE_ART}
-<g>${around.parts.map(part => part.svg).join('')}${pair.late}</g>
 ${CRAB.svg}
+${HERON.svg}
+<g>${around.parts.map(part => part.svg).join('')}${pair.late}</g>
 <g>${sparkles()}
 <g class="gulls"><g transform="translate(0 200)"><path class="gull wing" d="M0 0 q10 -10 20 0 q10 -10 20 0" fill="none" stroke-width="3"/></g>
 <g transform="translate(70 230)"><path class="gull wing" d="M0 0 q8 -8 16 0 q8 -8 16 0" fill="none" stroke-width="2.5" style="--d:.3"/></g>

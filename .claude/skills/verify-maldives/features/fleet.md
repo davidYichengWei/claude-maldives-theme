@@ -24,10 +24,15 @@
 ## How to get to it (user POV)
 
 Start subagents or background shells during a turn. `/maldives crew 3`,
-`/maldives shells 2` preview.
+`/maldives shells 2` preview; `/maldives reset` puts back the real counts
+(crew recounted from the running subagents, shells as counted from events)
+and the real mood, and leaves an island pastime and a forced scheme alone.
 
 ## Driving it with verify/run.sh
 
+`verify/scenarios/reset.json` (previews piled over one real subagent, then
+`/maldives reset` leaves only that dinghy), `verify/scenarios/fleet-refill.json`
+(all called home and wanted again before any is clear),
 `verify/scenarios/fleet-churn.json` (boats set out and are called home over
 one another), `verify/scenarios/far-sea.json` (every boat out, roaming
 across several redraws, then all called home), or `subagent`, `subagent-done`, `shell`, `shell-done`
@@ -50,7 +55,7 @@ events; `npm run fleet` and `npm run sides` for the schedule alone.
   (90 px across, 70 px in depth; 130 and 110 for the lead boat) trade
   places; the rest keep their order, which keeps the scene small.
 - A way in or out is keyed at times picked by thinning dense samples to a
-  1 px tolerance (2.5 px in a plain scene), so two scenes key it alike and a
+  1 px tolerance (3.5 px in a plain scene), so two scenes key it alike and a
   redraw takes a boat up where the last left it. Fixed even legs differed
   by up to 8 px between a busy scene and a quiet one on a steep slant.
 - Fleet hulls and all bow-on views are `<use>` clones of the defs, which
@@ -60,3 +65,10 @@ events; `npm run fleet` and `npm run sides` for the schedule alone.
   under way is placed by where it will be 1.5 s on, and the scene is drawn
   again every few seconds while it is, so two boats crossing in depth can
   briefly be the wrong way round.
+- A boat wanted while every circuit of its kind still has a boat on it or
+  sailing off it waits until one is clear (`berthAt`; register.tsx sets a
+  timer, story.ts queues a `berth` event). Taking over the circuit of a boat
+  still sailing off made that boat vanish mid-way.
+- A horizon boat called home before it reaches its water is sized by depth
+  (`sizeOn` off the roam's far edge); carrying the roam's straight line past
+  the far side made it more than twice as wide at the redraw.

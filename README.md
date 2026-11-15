@@ -14,7 +14,8 @@ An animated Maldives lagoon behind your conversations in the Claude desktop app.
 - **Background shells and subagents** show up as fishing boats and dinghies on the water.
 - **Shipping work** (`git push`, `gh pr create`, or a tool that opens a pull or merge request) sets off fireworks.
 - **Compacting** the conversation draws a slow whirlpool, and sending a prompt sets the fish leaping.
-- The scene follows the app's light or dark appearance: sun and clouds by day, moon, stars and lit villas by night.
+- **Wildlife** comes and goes on its own: dolphins, a turtle, a manta, and now and then a whale shark gliding far out under the lagoon. Two baby blacktip reef sharks circle the water villas and send the little shoals there darting off as they pass; a grey heron wades, fishes and drinks in the shallows off the beach and on the sand behind the palms, circling above the water villas a few times as it flies between them; a crab and a hermit crab wander the sand.
+- The scene follows the app's light or dark appearance: sun and clouds by day; moon, stars, lit villas and glowing plankton along the shore and in the boats' wakes by night.
 
 The backdrop is drawn by the Claude desktop app (and the mobile app). In a terminal the theme sets its colours only.
 
@@ -38,7 +39,7 @@ In the desktop app: click **+** next to the prompt box, then **Plugins**, **Add 
 
 ## Commands
 
-`/maldives <what>` previews a state or changes the look:
+`/maldives <what>` previews a state or changes the look. A preview only changes what the backdrop shows; Claude's next real event takes over again, or `reset` brings back what Claude is doing right away:
 
 | Command | What it does |
 | --- | --- |
@@ -49,6 +50,7 @@ In the desktop app: click **+** next to the prompt box, then **Plugins**, **Add 
 | `island fish`, `nap`, `sun`, `sip`, `fire` | Send Clawd straight to that pastime on the island |
 | `island tour` | A short turn at every pastime, about two minutes in all |
 | `light`, `dark`, `auto` | Force a light or dark scene, or follow the app again |
+| `reset` | Drop the previews and show what Claude is really doing: its state, the subagents and background shells it has running |
 | `debug` | Print what the backdrop is showing and when it was last drawn |
 
 ## Developing

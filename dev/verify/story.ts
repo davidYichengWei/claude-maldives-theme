@@ -12,7 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 import type { Mood, Need } from '../../types'
-import { muster } from '../../hooks/fleet'
+import { berthAt, muster } from '../../hooks/fleet'
 import type { Boat } from '../../hooks/fleet'
 import { FIREWORKS_MS, UNFLAGGED, UNPAINTED, hoist, paint, signalOf } from '../../hooks/paint'
 import type { Flag, Painted } from '../../hooks/paint'
@@ -40,6 +40,8 @@ type World = {
   need: Need
   crew: number
   shells: number
+  // The agent's real state, kept by its events; a preview leaves it alone.
+  live: { mood: Mood; need: Need; crew: number; shells: number }
   compacting: boolean
   fireworks: number
   voyage: Voyage
@@ -62,6 +64,7 @@ function play(scenario: Scenario, out: string): void {
     need: 'permission',
     crew: 0,
     shells: 0,
+    live: { mood: scenario.start?.mood ?? 'idle', need: 'permission', crew: 0, shells: 0 },
     compacting: false,
     fireworks: 0,
     voyage: { ...AT_HOME, at: T0 - (scenario.start?.home ?? 600) * 1000 },
@@ -89,8 +92,24 @@ function play(scenario: Scenario, out: string): void {
     }
     world.mood = next
   }
+  // The agent's own events set its real state and show it.
+  const feel = (next: Mood, now: number): void => {
+    world.live = { ...world.live, mood: next }
+    setMood(next, now)
+  }
+  const count = (kind: 'crew' | 'shells', change: (real: number) => number, now: number): void => {
+    const real = change(world.live[kind])
+    world.live = { ...world.live, [kind]: real }
+    world[kind] = real
+    recount(now)
+  }
   const recount = (now: number): void => {
-    world.boats = [...muster(world.boats, { lead: 0, crew: world.crew, shell: world.shells }, now)]
+    const wanted = { lead: 0, crew: world.crew, shell: world.shells }
+    world.boats = [...muster(world.boats, wanted, now)]
+    const when = berthAt(world.boats, wanted)
+    if (when !== undefined) {
+      queue.push([(when + 1 - T0) / 1000, 'berth'])
+    }
   }
   const celebrate = (seconds: number): void => {
     world.fireworks = at(seconds)
@@ -126,28 +145,29 @@ function play(scenario: Scenario, out: string): void {
     const now = at(seconds)
     const [word = '', arg] = what.split(/\s+/)
     if (word === 'turn') {
-      setMood('working', now)
+      feel('working', now)
     } else if (word === 'answer' || word === 'abort' || word === 'fail') {
-      setMood(word === 'answer' ? 'done' : word === 'abort' ? 'idle' : 'error', now)
+      feel(word === 'answer' ? 'done' : word === 'abort' ? 'idle' : 'error', now)
     } else if (word === 'prompt') {
       world.leapUntil = now + LEAP_MS
     } else if (word === 'permission' || word === 'question' || word === 'plan') {
+      world.live = { ...world.live, mood: 'waiting', need: word }
       world.need = word
       setMood('waiting', now)
     } else if (word === 'resolve') {
-      if (world.mood === 'waiting') {
-        setMood('working', now)
+      if (world.live.mood === 'waiting') {
+        feel('working', now)
       }
     } else if (word === 'subagent' || word === 'subagent-done') {
-      world.crew = Math.max(0, world.crew + (word === 'subagent' ? 1 : -1))
-      recount(now)
+      count('crew', n => Math.max(0, n + (word === 'subagent' ? 1 : -1)), now)
     } else if (word === 'shell' || word === 'shell-done') {
-      world.shells = Math.max(0, world.shells + (word === 'shell' ? 1 : -1))
-      recount(now)
+      count('shells', n => Math.max(0, n + (word === 'shell' ? 1 : -1)), now)
     } else if (word === 'compact' || word === 'compacted') {
       world.compacting = word === 'compact'
     } else if (word === 'ship') {
       celebrate(seconds)
+    } else if (word === 'berth') {
+      recount(now)
     } else if (word === 'fireworks-out') {
       if (world.fireworks === Number(arg)) {
         world.fireworks = 0
@@ -169,7 +189,13 @@ function play(scenario: Scenario, out: string): void {
   const command = (args: string, seconds: number, now: number): void => {
     const [word = '', amount] = args.split(/\s+/)
     const count = amount !== undefined && /^[0-5]$/.test(amount) ? Number(amount) : undefined
-    if (word === 'fireworks') {
+    if (word === 'reset') {
+      world.need = world.live.need
+      setMood(world.live.mood, now)
+      world.crew = world.live.crew
+      world.shells = world.live.shells
+      recount(now)
+    } else if (word === 'fireworks') {
       celebrate(seconds)
     } else if (word === 'island') {
       const drill = DRILLS.find(one => one === amount)
@@ -216,7 +242,7 @@ function randomScenario(seed: number): Scenario {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
   const pick = <T,>(items: readonly T[]): T => items[Math.floor(rand() * items.length)] as T
-  const vocabulary = ['turn', 'turn', 'answer', 'answer', 'abort', 'fail', 'prompt', 'permission', 'question', 'plan', 'resolve', 'resolve', 'subagent', 'subagent-done', 'shell', 'shell-done', 'compact', 'compacted', 'ship', 'ask', 'ask', 'reload', '/maldives island tour', '/maldives island nap', '/maldives island sun', '/maldives dark', '/maldives light', '/maldives crew 2', '/maldives shells 1']
+  const vocabulary = ['turn', 'turn', 'answer', 'answer', 'abort', 'fail', 'prompt', 'permission', 'question', 'plan', 'resolve', 'resolve', 'subagent', 'subagent-done', 'shell', 'shell-done', 'compact', 'compacted', 'ship', 'ask', 'ask', 'reload', '/maldives island tour', '/maldives island nap', '/maldives island sun', '/maldives dark', '/maldives light', '/maldives crew 2', '/maldives shells 1', '/maldives crew 4', '/maldives reset']
   const events: [number, string][] = []
   let t = 1 + rand() * 4
   while (t < 85) {

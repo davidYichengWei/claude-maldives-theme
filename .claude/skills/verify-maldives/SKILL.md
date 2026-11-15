@@ -141,6 +141,22 @@ The app reloads the mod when the session's turn ends.
 
 ## Helpers
 
+- `node verify/layers.cjs sweep <scene.svg> <out-dir> [from] [to] [every]`:
+  the layer audit over one scene, every animation seeked through the
+  wildlife's long rounds (0-1200 s at 0.5 s catches them all). It finds
+  every moving thing by its markup, gives it a layer (sky, surface, under
+  the water) and a depth (where it meets the water or ground), and flags
+  wrong paint order, two things at one depth running through each other,
+  see-through creatures mixing colours, and jumps; each pair is confirmed
+  by painting the two alone and counting shared pixels. `layers.md` lists
+  the faults with crops. `node verify/layers.cjs film <out-dir> <dir>...`
+  does the same over the scenes of `run.sh` films, across their redraws.
+  Work is shared over `LAYERS_JOBS` browsers (default half the CPUs, at most
+  8; a full sweep takes under a minute). One browser per worker: pages of one
+  browser render in turn and gain nothing. Add a new creature to its
+  `census()` (and a new swimmer lane to `LANES`), then check with a census at
+  one moment that it is listed: an object with no shapes found is skipped
+  without a word (a bare `<use>` and a class matched by prefix both were).
 - `npm run fuzz`: every pastime and trip interruption at many instants, for
   scene build errors and timing; `bad 0` is clean.
 - `npm run size`: scene sizes for the quiet and the busiest states.

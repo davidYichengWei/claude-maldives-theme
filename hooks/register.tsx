@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, ThemeSetArgs } from 'claude-code'
 
 import type { Mood, Need } from '../types'
-import { muster } from './fleet'
+import { berthAt, muster } from './fleet'
 import type { Boat } from './fleet'
 import { makeColors } from './make-colors.js'
 import { FIREWORKS_MS, UNFLAGGED, UNPAINTED, hoist, paint, signalOf } from './paint'
@@ -58,6 +58,8 @@ const mood = atom({ plugin: 'maldives', key: 'mood' } as const, 'idle' as Mood)
 const need = atom({ plugin: 'maldives', key: 'need' } as const, 'permission' as Need)
 const crew = atom({ plugin: 'maldives', key: 'crew' } as const, 0)
 const shells = atom({ plugin: 'maldives', key: 'shells' } as const, 0)
+// The agent's real state, kept apart from what a preview shows.
+const live = atom({ plugin: 'maldives', key: 'live' } as const, { mood: 'idle' as Mood, need: 'permission' as Need, crew: 0, shells: 0 })
 const compacting = atom({ plugin: 'maldives', key: 'compacting' } as const, false)
 const fireworks = atom({ plugin: 'maldives', key: 'fireworks' } as const, 0)
 const leap = atom({ plugin: 'maldives', key: 'leap' } as const, 0)
@@ -103,17 +105,66 @@ async function setMood($: EngineInterface, next: Mood): Promise<void> {
   await update($, mood, () => next)
 }
 
+// When a boat left waiting for a free circuit is next looked at again.
+let berth = 0
+
 // Brings the boats on the water in line with the subagents and background
-// shells in flight.
+// shells in flight. A boat that finds every circuit still taken by one sailing
+// off is sent out once that one is clear.
 async function recount($: EngineInterface): Promise<void> {
   const now = await $.clock.now()
   const wanted = { lead: 0, crew: await read($, crew), shell: await read($, shells) }
   await update($, boats, fleet => [...muster(fleet, wanted, now)])
+  const when = berthAt(await read($, boats), wanted)
+  if (when !== undefined && when !== berth) {
+    berth = when
+    $.clock.after(Math.max(1, when - now + 1), async () => {
+      if (berth === when) {
+        berth = 0
+        await recount($)
+      }
+    })
+  }
 }
 
 async function waitOn($: EngineInterface, kind: Need): Promise<void> {
   await update($, need, () => kind)
   await setMood($, 'waiting')
+}
+
+// The agent's own events: each sets its real state and shows it, so a real
+// change ends any preview of what it changes.
+async function feel($: EngineInterface, next: Mood): Promise<void> {
+  await update($, live, state => ({ ...state, mood: next }))
+  await setMood($, next)
+}
+
+async function hold($: EngineInterface, kind: Need): Promise<void> {
+  await update($, live, state => ({ ...state, mood: 'waiting' as Mood, need: kind }))
+  await waitOn($, kind)
+}
+
+async function count($: EngineInterface, kind: 'crew' | 'shells', change: (real: number) => number): Promise<void> {
+  const real = change((await read($, live))[kind])
+  await update($, live, state => ({ ...state, [kind]: real }))
+  if (kind === 'crew') await update($, crew, () => real)
+  else await update($, shells, () => real)
+  await recount($)
+}
+
+// Ends every preview: the backdrop goes back to what the agent is doing, its
+// running subagents counted afresh from the engine's own list.
+async function reset($: EngineInterface): Promise<{ mood: Mood; crew: number; shells: number }> {
+  const agents = await $.agent.list()
+  const running = agents.filter(agent => agent.teammateId === undefined && (agent.status === 'pending' || agent.status === 'running' || agent.status === 'waiting')).length
+  const real = { ...(await read($, live)), crew: running }
+  await update($, live, () => real)
+  await update($, need, () => real.need)
+  await setMood($, real.mood)
+  await update($, crew, () => real.crew)
+  await update($, shells, () => real.shells)
+  await recount($)
+  return real
 }
 
 function needOf(tool: string): Need {
@@ -137,6 +188,10 @@ let drawn = UNPAINTED
 // How often the backdrop was asked for and how often it was drawn anew, for
 // `/maldives debug`.
 let tally = { asks: 0, builds: 0 }
+// The latest asks for the backdrop: when, whether the scene was drawn anew,
+// and how old the scene handed back was. A frame the app reloads with an old
+// scene starts every loop where it stood when that scene was drawn.
+let recent: { at: number; isNew: boolean; age: number }[] = []
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -149,7 +204,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'maldives',
       description:
-        'Preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, or print what the backdrop is showing with debug',
+        'Preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), go back to what Claude is really doing with reset, set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, or print what the backdrop is showing with debug',
     })
     return next(e)
   })
@@ -167,8 +222,14 @@ export const register: Register = on => {
         `plan: boards ${plan.boards.toFixed(1)}, lands ${plan.lands.toFixed(1)}, settled ${plan.settled.toFixed(1)}, gone ${plan.gone.toFixed(1)}`,
         `asked ${tally.asks} times, drawn ${tally.builds} times, last ${((now - drawn.built) / 1000).toFixed(1)}s ago, ${drawn.source.length} chars`,
         `key ${drawn.key}`,
+        ...recent.map(a => `asked ${((now - a.at) / 1000).toFixed(1)}s ago: ${a.isNew ? 'drawn anew' : `kept, drawn ${(a.age / 1000).toFixed(1)}s before`}`),
       ]
       return { text: lines.join('\n') }
+    }
+    if (arg === 'reset') {
+      const real = await reset($)
+      const what = real.mood === 'waiting' ? `waiting on ${await read($, need)}` : real.mood
+      return { text: `Back to what Claude is doing: ${what}, ${real.crew} dinghies, ${real.shells} fishing boats.` }
     }
     if (arg === 'fireworks') {
       await celebrate($)
@@ -216,7 +277,7 @@ export const register: Register = on => {
     }
     const pick = MOODS.find(m => m === arg)
     if (pick === undefined) {
-      return { text: `Usage: /maldives ${[...MOODS, ...NEEDS, 'crew [0-5]', 'shells [0-5]', 'fireworks', `island ${DRILLS.join('|')}`, ...SCHEMES].join(' | ')}` }
+      return { text: `Usage: /maldives ${[...MOODS, ...NEEDS, 'reset', 'crew [0-5]', 'shells [0-5]', 'fireworks', `island ${DRILLS.join('|')}`, ...SCHEMES].join(' | ')}` }
     }
     await setMood($, pick)
     return { text: `Backdrop state: ${pick}` }
@@ -238,10 +299,9 @@ export const register: Register = on => {
 
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
-      await setMood($, 'working')
+      await feel($, 'working')
     } else {
-      await update($, crew, n => n + 1)
-      await recount($)
+      await count($, 'crew', n => n + 1)
     }
     return next(e)
   })
@@ -250,10 +310,9 @@ export const register: Register = on => {
   // turn's end leaves the count alone.
   on('turn.complete', async ($, e, next) => {
     if (e.agentId !== undefined) {
-      await update($, crew, n => Math.max(0, n - 1))
-      await recount($)
+      await count($, 'crew', n => Math.max(0, n - 1))
     } else {
-      await setMood($, e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'idle' : 'error')
+      await feel($, e.reason === 'answer' ? 'done' : e.reason === 'aborted' ? 'idle' : 'error')
     }
     return next(e)
   })
@@ -264,9 +323,8 @@ export const register: Register = on => {
     const tasks = e.background_tasks
     if (tasks !== undefined) {
       const inFlight = (type: string): number => tasks.filter(task => task.type === type).length
-      await update($, shells, () => inFlight('shell'))
-      await update($, crew, () => inFlight('subagent'))
-      await recount($)
+      await count($, 'shells', () => inFlight('shell'))
+      await count($, 'crew', () => inFlight('subagent'))
     }
     return next(e)
   })
@@ -275,7 +333,7 @@ export const register: Register = on => {
   // engine's own ask verdict does not: the mode may settle it with nobody asked.
   on('classic.PermissionRequest', async ($, e, next) => {
     askedTool = e.tool_name
-    await waitOn($, needOf(e.tool_name))
+    await hold($, needOf(e.tool_name))
     return next(e)
   })
 
@@ -294,17 +352,16 @@ export const register: Register = on => {
   on('tool.call', async ($, e, next) => {
     const isMain = e.agentId === undefined
     if (isMain && (e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode')) {
-      await waitOn($, needOf(e.tool))
+      await hold($, needOf(e.tool))
     }
     const ran = await next(e)
-    if ((isMain || e.tool === askedTool) && (await read($, mood)) === 'waiting') {
+    if ((isMain || e.tool === askedTool) && (await read($, live)).mood === 'waiting') {
       askedTool = ''
-      await setMood($, 'working')
+      await feel($, 'working')
     }
     const isOk = ran.deny === undefined && ran.isError !== true
     if (isOk && e.tool === 'Bash' && e.run_in_background === true) {
-      await update($, shells, n => n + 1)
-      await recount($)
+      await count($, 'shells', n => n + 1)
     }
     // Work shipped: a push, or a pull or merge request opened.
     const isShipped =
@@ -343,6 +400,7 @@ export const register: Register = on => {
       now,
     )
     tally = { asks: tally.asks + 1, builds: tally.builds + (drawn.built !== before ? 1 : 0) }
+    recent = [...recent, { at: now, isNew: drawn.built !== before, age: now - drawn.built }].slice(-12)
     return (
       <Svg
         source={drawn.source}

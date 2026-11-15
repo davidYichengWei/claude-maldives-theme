@@ -1,0 +1,7 @@
+{
+  "about": "Previews pile up over a real subagent, as in /maldives crew 4, shells 5, plan, idle, island nap; /maldives reset brings back the one real dinghy, no fishing boats and the real mood",
+  "start": { "mood": "idle", "home": 600 },
+  "events": [[0, "turn"], [2, "subagent"], [6, "answer"], [12, "/maldives crew 4"], [14, "/maldives shells 5"], [18, "/maldives plan"], [30, "/maldives idle"], [42, "/maldives island nap"], [60, "/maldives reset"]],
+  "askEvery": 7,
+  "frames": { "from": 0, "to": 100, "every": 0.25 }
+}

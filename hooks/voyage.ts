@@ -29,7 +29,9 @@ const HAMMOCK: Point = { x: ISLE - 25, y: 644 }
 // it steps on and off the boat.
 const ROOT: Point = { x: JETTY.root - 4, y: JETTY.y + 2 }
 const FISHING: Point = { x: JETTY.tip + 14, y: JETTY.y }
-const BOARD: Point = { x: JETTY.tip + 6, y: JETTY.y }
+// Far enough in that the mascot's feet stay on the deck and clear of the
+// lantern post at the end.
+const BOARD: Point = { x: JETTY.tip + 34, y: JETTY.y }
 const BY_FIRE: Point = { x: FIRE.x - 30, y: 735 }
 // Where it climbs onto the lounger from, on the sand in front of it, and
 // where it lies.
@@ -204,6 +206,40 @@ export function lyingIn(at: Point): 'hammock' | 'lounger' | undefined {
   return gap(at, ON_LOUNGER) < 3 ? 'lounger' : undefined
 }
 
+// How long the mascot takes to get down from the hammock or off the lounger.
+export const RISE_S = 0.6
+
+// Whether the mascot at `at` lies in the hammock or on the lounger, or is part
+// way down from it: `u` is the share of its getting up already behind it,
+// 0 while it still lies there.
+export function risingFrom(at: Point): { bed: 'hammock' | 'lounger'; u: number } | undefined {
+  const bed = lyingIn(at)
+  if (bed !== undefined) {
+    return { bed, u: 0 }
+  }
+  const unease = (done: number): number => {
+    let lo = 0
+    let hi = 1
+    for (let i = 0; i < 30; i++) {
+      const mid = (lo + hi) / 2
+      if (eased(EASE, mid) < done) lo = mid
+      else hi = mid
+    }
+    return (lo + hi) / 2
+  }
+  if (Math.abs(at.x - HAMMOCK.x) < 0.5 && at.y > HAMMOCK.y && at.y < GROUND_Y - 0.5) {
+    return { bed: 'hammock', u: unease((at.y - HAMMOCK.y) / (GROUND_Y - HAMMOCK.y)) }
+  }
+  const run = { x: BY_LOUNGER.x - ON_LOUNGER.x, y: BY_LOUNGER.y - ON_LOUNGER.y }
+  const length = Math.hypot(run.x, run.y)
+  const along = ((at.x - ON_LOUNGER.x) * run.x + (at.y - ON_LOUNGER.y) * run.y) / (length * length)
+  const off = Math.abs((at.x - ON_LOUNGER.x) * run.y - (at.y - ON_LOUNGER.y) * run.x) / length
+  if (off < 0.5 && along > 0 && along < 1 - 0.5 / length) {
+    return { bed: 'lounger', u: unease(along) }
+  }
+  return undefined
+}
+
 // Whether `at` is on the lounger or on the sand in front of it, where the
 // mascot stands before the lounger rather than behind it.
 export function isByLounger(at: Point): boolean {
@@ -284,7 +320,7 @@ function moored(from: number, to: number, heading: 1 | -1 = -1): Leg {
 
 // A hop from `a` to `b`, rising between them.
 function hop(from: number, a: Point, b: Point): Leg {
-  const at = (p: number): Point => ({ x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p - 150 * p * (1 - p) })
+  const at = (p: number): Point => ({ x: a.x + (b.x - a.x) * p, y: a.y + (b.y - a.y) * p - 190 * p * (1 - p) })
   return { from, to: from + HOP_S, at, heading: 1, stride: false, curve: undefined }
 }
 
@@ -342,10 +378,13 @@ function footpath(from: Point, to: Point, start: number, speed: number): Leg[] {
       move(next, Math.max(0.5, gap(at, next) / speed), true)
     }
   }
-  if (at.y < 700) {
-    move({ x: at.x, y: GROUND_Y }, 0.6, false)
-  } else if (gap(at, ON_LOUNGER) < 3) {
-    move(BY_LOUNGER, 0.6, false)
+  // Getting down from the hammock or off the lounger, it carries on from as
+  // far as it had got.
+  const rising = risingFrom(at)
+  if (rising !== undefined) {
+    move(rising.bed === 'hammock' ? { x: at.x, y: GROUND_Y } : BY_LOUNGER, Math.max(0.05, RISE_S * (1 - rising.u)), false)
+  } else if (at.y < 700) {
+    move({ x: at.x, y: GROUND_Y }, RISE_S, false)
   } else if (at.x < ROOT.x - 2 && Math.abs(at.y - JETTY.y) > 3) {
     // Caught between the jetty and the boat: back onto the jetty.
     move({ x: Math.max(at.x, BOARD.x), y: JETTY.y }, 0.3, false)

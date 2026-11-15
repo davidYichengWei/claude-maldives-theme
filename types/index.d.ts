@@ -8,10 +8,14 @@ export type Point = { x: number; y: number }
 declare module 'claude-code' {
   interface PluginState {
     maldives: {
+      // What the backdrop shows. A `/maldives` preview changes these alone.
       mood: Mood
       need: Need
       crew: number
       shells: number
+      // What the agent is really doing, kept by its own events, for
+      // `/maldives reset` to go back to.
+      live: { mood: Mood; need: Need; crew: number; shells: number }
       compacting: boolean
       // When the fireworks went up (clock ms), or 0 when none are going.
       fireworks: number

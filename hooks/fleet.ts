@@ -77,14 +77,20 @@ function roam(kind: BoatKind, [left, right]: [number, number], [far, near]: [num
 
 // A boat's size where it is on its water. On a roam the scene sizes it on a
 // straight line between its sizes at the far and the near side, which is
-// within a few hundredths of its size by depth.
+// within a few hundredths of its size by depth. Off that water, on its way to
+// or from the horizon, it is sized by depth alone: the line, carried on past
+// the far side, would leave it far too big.
 export function sizeOn(boat: Boat, y: number): number {
   const r = routeOf(boat)
   if (r.drift === undefined) {
     return r.scale
   }
-  const [far, near] = [sizeAt(boat.kind, r.cy - r.ry), sizeAt(boat.kind, r.cy + r.ry)]
-  return far + ((near - far) * (y - (r.cy - r.ry))) / (2 * r.ry || 1)
+  const [top, bottom] = [r.cy - r.ry, r.cy + r.ry]
+  if (y < top || y > bottom) {
+    return SIZE[boat.kind] * depthScale(y)
+  }
+  const [far, near] = [sizeAt(boat.kind, top), sizeAt(boat.kind, bottom)]
+  return far + ((near - far) * (y - top)) / (2 * r.ry || 1)
 }
 
 // The ends of a roam's sizes, far side first.
@@ -178,7 +184,9 @@ const wentOut = new Map<string, Side>()
 
 // Brings the fleet in line with how many boats of each kind should be out.
 // A boat no longer wanted is called home and stays in the fleet while it sails
-// off; a new one takes a circuit no other boat of its kind is on. A boat comes
+// off; a new one takes a circuit no other boat of its kind is on. While every
+// circuit still has a boat on it or sailing off it, the new one waits:
+// `berthAt` says when a circuit comes free. A boat comes
 // in by the edge the last one on its circuit went out by; with none before it,
 // most come in from the left, some from the right. Each has its own way round
 // the island.
@@ -199,13 +207,9 @@ export function muster(fleet: readonly Boat[], wanted: Record<BoatKind, number>,
       // a lone one is as likely to head out to sea as to keep inshore.
       const free = [...Array(routes).keys()].filter(i => !taken.includes(i))
       const pick = kind === 'lead' ? 0 : Math.floor(chance((now % 1000003) / 1000 + count * 5.27 + KINDS.indexOf(kind) * 2.39) * free.length)
-      let slot = free[pick]
+      const slot = free[pick]
       if (slot === undefined) {
-        // Every circuit still has a boat sailing off it: the one furthest gone gives its up.
-        const leaving = next.filter(boat => boat.kind === kind && boat.gone !== undefined)
-        const first = leaving.reduce((a, b) => ((a.gone ?? 0) <= (b.gone ?? 0) ? a : b))
-        next = next.filter(boat => boat !== first)
-        slot = first.slot
+        break
       }
       const seed = (now % 1000003) / 1000 + slot * 7.13 + KINDS.indexOf(kind) * 3.71
       const from: Side = wentOut.get(`${kind}${slot}`) ?? (chance(seed) < 0.3 ? 'R' : 'L')
@@ -214,6 +218,18 @@ export function muster(fleet: readonly Boat[], wanted: Record<BoatKind, number>,
     }
   }
   return next
+}
+
+// When `muster` will next find a circuit free for a boat it had to leave
+// waiting: once the first boat still sailing off a circuit of that kind is
+// clear of the fleet. Undefined when no boat is waiting.
+export function berthAt(fleet: readonly Boat[], wanted: Record<BoatKind, number>): number | undefined {
+  const times = KINDS.flatMap(kind => {
+    const want = Math.min(wanted[kind], ROUTES[kind].length)
+    const out = fleet.filter(boat => boat.kind === kind && boat.gone === undefined).length
+    return out < want ? fleet.filter(boat => boat.kind === kind && boat.gone !== undefined).map(boat => (boat.gone ?? 0) + LEAVE_S * 1000) : []
+  })
+  return times.length === 0 ? undefined : Math.min(...times)
 }
 
 // The progress a CSS cubic-bezier timing gives at time fraction `p`.

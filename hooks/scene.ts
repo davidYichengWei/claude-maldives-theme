@@ -248,6 +248,9 @@ const LANE_GATES = (() => {
   return css
 })()
 
+// The scene's own rules. The night block comes last, so that its rules win
+// over the day rules of the same weight above it, as they do when a forced
+// dark scheme appends them (`styleFor`).
 const STYLE = `
 *{--P:calc((var(--t) + var(--d,0))*-1s)}
 .sky0{stop-color:#1f86d6}.sky1{stop-color:#5fb8ec}.sky2{stop-color:#bfe6f8}.sky3{stop-color:#f2fbff}
@@ -283,44 +286,6 @@ const STYLE = `
 .ham{fill:#f6f2e6}
 .lit{fill:#4a3624;opacity:.55}
 .stars,.moon,.moonglow,.navlamp{opacity:0}
-@media (prefers-color-scheme: dark){
-  .sky0{stop-color:#040d1f}.sky1{stop-color:#0b2242}.sky2{stop-color:#173f63}.sky3{stop-color:#2a5a7a}
-  .sea0{stop-color:#06223a}.sea1{stop-color:#0a3550}.sea2{stop-color:#0e4c5e}.sea3{stop-color:#156066}.sea4{stop-color:#1f7470}
-  .halo0{stop-color:#3d8f88}.halo1{stop-color:#23706c}.halo2{stop-color:#156066}
-  .sand0{stop-color:#b8ab8c}.sand1{stop-color:#a29679}.sand2{stop-color:#988d73}
-  .roof0{stop-color:#7a6040}.roof1{stop-color:#4f3b25}
-  .cl0{stop-color:#5a7290}.cl1{stop-color:#2c4460}
-  .col0{stop-color:#c4d6ff}
-  .gcol{stroke:#d6e3ff}.glit{opacity:.55}
-  .sun,.sunglow{opacity:0}.moon,.stars,.moonglow,.navlamp{opacity:1}
-  .far{fill:#16362f}.farsand{fill:#6b6350}.fpa{fill:#12302a}.fvb{fill:#ffcf7a}.frf{fill:#4a3d2e}
-  .wall{fill:#5e4630}.wallshade{fill:#4a3624}.deck{fill:#47341f}
-  .trunk{fill:#5a4630}.bark{fill:#4a3926}.sh{fill:#000}
-  .fa{fill:#173f2a}.fb{fill:#1e4d33}.fc{fill:#123321}.rib{stroke:#0c2618}
-  .bush{fill:#173f2a}.bush2{fill:#1e4d33}.leaf{stroke:#173f2a}.flw{fill:#8a4a5c}.flc{fill:#9c8a5a}
-  .grass{stroke:#2d4d2a}.grain{fill:#4f4636}.shoal{fill:#2f7f7a}
-  .wsb{fill:#1a3344}.wsd{fill:#142a38}#wsp{fill:#6f8fa0}.bio{display:inline}.glint{fill:#8ff6ff}
-  .hrl{stroke:#7a6a4c}.hrg{fill:#6b7378}.hrh{fill:#aab3b9}.hrk{stroke:#a6afb5}.hrw{fill:#4e575e}.hmc{fill:#9a8064}.hms{stroke:#6e4a33}.hml{stroke:#8a3f26}.hmo{fill:#93442f}
-  .crb{fill:#93442f}.crl{stroke:#6e3424}
-  .foam{stroke:#9fc4cc}.wet{fill:#5f8a84}
-  .wvs{opacity:.45}
-  .gull{stroke:#9fb7cc}
-  .shade{fill:#010d14;opacity:.14}
-  .tsk{fill:#1c4945}.tsh{fill:#1e3f31}.tsl{fill:#274c37}.tsc{stroke:#133028}.teye{fill:#0a2423}
-  .mb{fill:#113845}.mm{fill:#416c7c;opacity:.4}
-  .colm{opacity:.45}
-  .rbase{fill:#03202b;opacity:.35}.kl{opacity:.16}.sg{stroke:#1c5a44}
-  .k1{color:#7a4f63}.k2{color:#7d5a3c}.k3{color:#5a4a7a}.k4{color:#7d7040}.k5{color:#2a6f69}.k6{color:#70393c}.k7{color:#2c4470}.k8{color:#4b6a37}.rk{color:#1b4248}
-  .lf{opacity:.55}.beam{opacity:.35}
-  .spl{opacity:.55}.fin{fill:#0c1c26}.fwk{opacity:.45}.fcl{opacity:.35}.dol{fill:#1c3447}.dolb{fill:#5f7f95}.dolh{fill:#2a4a60}
-  .ff{fill:#1f4666}.ffw{fill:#8fb2cc}
-  .sna{fill:#8f914f}.snb{fill:#93a586}.snc{stroke:#2b74aa}.bna{fill:#90aaa9}.bns{stroke:#90aaa9}.bnb{fill:#959c53}
-  .ham{fill:#8f8a7c}
-  .lit{fill:#ffcf7a;opacity:.95}
-  .fire{opacity:1}
-  .reflit{opacity:.5}
-  .haze{opacity:.2}
-}
 @keyframes drift{from{transform:translateX(0)}to{transform:translateX(-${W}px)}}
 @keyframes wv{from{transform:translateX(0)}to{transform:translateX(var(--p))}}
 @keyframes swell{0%,100%{transform:translateY(0)}50%{transform:translateY(2.5px)}}
@@ -456,6 +421,44 @@ ${LANE_GATES}
 .ffY{animation:ffY 1.5s linear calc(var(--f) * 1s) 2 both}
 .ffR{animation:ffR 1.5s linear calc(var(--f) * 1s) 2 both}
 .ffs{fill:none;stroke:#fff;stroke-width:1.6;opacity:0;transform-box:fill-box;transform-origin:center;animation:ffs .9s ease-out calc((var(--f) + .1 + var(--k) * 1.4) * 1s) 1}
+@media (prefers-color-scheme: dark){
+  .sky0{stop-color:#040d1f}.sky1{stop-color:#0b2242}.sky2{stop-color:#173f63}.sky3{stop-color:#2a5a7a}
+  .sea0{stop-color:#06223a}.sea1{stop-color:#0a3550}.sea2{stop-color:#0e4c5e}.sea3{stop-color:#156066}.sea4{stop-color:#1f7470}
+  .halo0{stop-color:#3d8f88}.halo1{stop-color:#23706c}.halo2{stop-color:#156066}
+  .sand0{stop-color:#b8ab8c}.sand1{stop-color:#a29679}.sand2{stop-color:#988d73}
+  .roof0{stop-color:#7a6040}.roof1{stop-color:#4f3b25}
+  .cl0{stop-color:#5a7290}.cl1{stop-color:#2c4460}
+  .col0{stop-color:#c4d6ff}
+  .gcol{stroke:#d6e3ff}.glit{opacity:.55}
+  .sun,.sunglow{opacity:0}.moon,.stars,.moonglow,.navlamp{opacity:1}
+  .far{fill:#16362f}.farsand{fill:#6b6350}.fpa{fill:#12302a}.fvb{fill:#ffcf7a}.frf{fill:#4a3d2e}
+  .wall{fill:#5e4630}.wallshade{fill:#4a3624}.deck{fill:#47341f}
+  .trunk{fill:#5a4630}.bark{fill:#4a3926}.sh{fill:#000}
+  .fa{fill:#173f2a}.fb{fill:#1e4d33}.fc{fill:#123321}.rib{stroke:#0c2618}
+  .bush{fill:#173f2a}.bush2{fill:#1e4d33}.leaf{stroke:#173f2a}.flw{fill:#8a4a5c}.flc{fill:#9c8a5a}
+  .grass{stroke:#2d4d2a}.grain{fill:#4f4636}.shoal{fill:#2f7f7a}
+  .wsb{fill:#1a3344}.wsd{fill:#142a38}#wsp{fill:#6f8fa0}.bio{display:inline}.glint{fill:#8ff6ff}
+  .hrl{stroke:#7a6a4c}.hrg{fill:#6b7378}.hrh{fill:#aab3b9}.hrk{stroke:#a6afb5}.hrw{fill:#4e575e}.hmc{fill:#9a8064}.hms{stroke:#6e4a33}.hml{stroke:#8a3f26}.hmo{fill:#93442f}
+  .crb{fill:#93442f}.crl{stroke:#6e3424}
+  .foam{stroke:#9fc4cc}.wet{fill:#5f8a84}
+  .wvs{opacity:.45}
+  .gull{stroke:#9fb7cc}
+  .shade{fill:#010d14;opacity:.14}
+  .tsk{fill:#1c4945}.tsh{fill:#1e3f31}.tsl{fill:#274c37}.tsc{stroke:#133028}.teye{fill:#0a2423}
+  .mb{fill:#113845}.mm{fill:#416c7c;opacity:.4}
+  .colm{opacity:.45}
+  .rbase{fill:#03202b;opacity:.35}.kl{opacity:.16}.sg{stroke:#1c5a44}
+  .k1{color:#7a4f63}.k2{color:#7d5a3c}.k3{color:#5a4a7a}.k4{color:#7d7040}.k5{color:#2a6f69}.k6{color:#70393c}.k7{color:#2c4470}.k8{color:#4b6a37}.rk{color:#1b4248}
+  .lf{opacity:.55}.beam{opacity:.35}
+  .spl{opacity:.55}.fin{fill:#0c1c26}.fwk{opacity:.45}.fcl{opacity:.35}.dol{fill:#1c3447}.dolb{fill:#5f7f95}.dolh{fill:#2a4a60}
+  .ff{fill:#1f4666}.ffw{fill:#8fb2cc}
+  .sna{fill:#8f914f}.snb{fill:#93a586}.snc{stroke:#2b74aa}.bna{fill:#90aaa9}.bns{stroke:#90aaa9}.bnb{fill:#959c53}
+  .ham{fill:#8f8a7c}
+  .lit{fill:#ffcf7a;opacity:.95}
+  .fire{opacity:1}
+  .reflit{opacity:.5}
+  .haze{opacity:.2}
+}
 `
 
 // The fleet's hulls and every boat's bow-on view are drawn once, in the

@@ -195,11 +195,18 @@ function stepFaults(a, b, dt) {
   const context = await browser.newContext({ viewport: { width: W, height: H }, colorScheme: story.scheme === 'dark' ? 'dark' : 'light' })
   const page = await context.newPage()
   const diffPage = await context.newPage()
+  // A lossless PNG encoded for speed: Playwright's own screenshot spends most
+  // of a seam's time compressing the whole picture.
+  const cdp = await context.newCDPSession(page)
+  const grab = async () => Buffer.from((await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true })).data, 'base64')
   let loaded = -1
   const show = async i => {
     if (loaded === i) return
     const svg = fs.readFileSync(path.join(dir, story.redraws[i].file), 'utf8').replace('<svg ', `<svg width="${W}" height="${H}" `)
-    await page.setContent(`<html><body style="margin:0;overflow:hidden">${svg}</body></html>`)
+    // Every animation starts paused: one that ran on its own while the page
+    // settled could end before it is seeked, and an ended animation is no
+    // longer listed to seek, so a busy machine changed what a frame showed.
+    await page.setContent(`<html><head><style>*{animation-play-state:paused!important}</style></head><body style="margin:0;overflow:hidden">${svg}</body></html>`)
     // A boat drawn more than once is drawn by <use> copies. The animations
     // inside a copy's shadow tree are not the document's, so they cannot be
     // seeked, and nothing in a copy can be measured: each copy of a boat is
@@ -265,9 +272,9 @@ function stepFaults(a, b, dt) {
     const t = story.redraws[i].at
     if (t < from || t > to) continue
     const before = await at(i - 1, t)
-    const beforeShot = await page.screenshot()
+    const beforeShot = await grab()
     const after = await at(i, t)
-    const afterShot = await page.screenshot()
+    const afterShot = await grab()
     const changed = await differ(beforeShot, afterShot)
     const faults = stepFaults(before, after, 0)
     // Called away from its day on the island, the mascot drops a glance, a

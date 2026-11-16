@@ -12,7 +12,10 @@ trip starts, fireworks that restart on a refresh. A still preview cannot show
 them. This skill plays a list of timed events through the plugin's real
 `paint()` / `scene()` / `embark()` code, writes each scene the app would get,
 then renders them in Chromium with every CSS animation paused and seeked, and
-checks the frames and the seams between scenes.
+checks the frames and the seams between scenes. Animations are paused from
+the moment a scene loads: one left running until the seek could end first
+(fireworks play four times and stop), and an ended animation is no longer
+listed to seek, so a busy machine changed what a frame showed.
 
 One kind of bug it cannot see: the desktop app draws the scene in a frame of
 its own, and some constructs Chromium plays happily stop every animation
@@ -60,6 +63,20 @@ under `~/.claude/dev-mods/*/maldives` matches the repo. Each FAIL line says
 what to run.
 
 ## Drive
+
+Everything before a sync or a commit, in one go:
+
+```bash
+verify/all.sh            # tsc, fuzz, layer sweep, every named scenario and seeds 58 31 7, film audit
+verify/all.sh 5 11       # other seeds for the random mixes
+```
+
+It writes every scenario's scenes first, then runs all the checks at once,
+films and audits side by side, so they share the machine instead of taking
+turns; evidence goes to `dev/verify/out/all-<stamp>/` and the last lines
+list every fault. `VERIFY_JOBS`, `LAYERS_JOBS` and `FUZZ_JOBS` set how many
+films, audit browsers and fuzz processes run at once (defaults scale with
+the CPUs). Exit 0 is clean, 2 a fault, 1 a check that could not run.
 
 Named scenarios (`verify/scenarios/*.json`) for a feature, random event mixes
 for combinations:
@@ -164,9 +181,12 @@ The app reloads the mod when the session's turn ends.
   for the twinkles on the water, under the water) and a depth (where it meets the water or ground), and flags
   wrong paint order, two things at one depth running through each other,
   see-through creatures mixing colours, and jumps; each pair is confirmed
-  by painting the two alone and counting shared pixels (with the targets
-  of any `<use>` in them kept visible: hiding those left every clone, the
-  small boats' hulls among them, at zero pixels). `layers.md` lists
+  by painting the two alone and counting shared pixels, shot only where the
+  boxes of all they paint meet. Painting alone marks the object's own
+  elements and hides the rest outside the defs; a `<use>` target is left
+  unstyled so its clone follows the use drawing it. (Marking the targets
+  instead showed a shared target, every dinghy's hull, in every boat that
+  uses it, and counted the other boats' hulls as shared.) `layers.md` lists
   the faults with crops. `node verify/layers.cjs film <out-dir> <dir>...`
   does the same over the scenes of `run.sh` films, across their redraws.
   Work is shared over `LAYERS_JOBS` browsers (default half the CPUs, at most
@@ -177,8 +197,11 @@ The app reloads the mod when the session's turn ends.
   without a word (a bare `<use>` and a class matched by prefix both were).
 - `npm run fuzz`: every pastime and trip interruption at many instants, in
   every scheme with boats, flags, fireworks and compacting drawn at random,
-  for scene build errors, timing and any construct not yet proven in the
-  app; `bad 0` is clean. Run it before every sync to the live copy.
+  for scene build errors, timing, size past the app's limit and any
+  construct not yet proven in the app; `bad 0` is clean. Run it before every
+  sync to the live copy. It shares the trips over `FUZZ_JOBS` processes
+  (default half the CPUs, at most 16), each walking the same random states,
+  so the result is the same however many run.
 - `npm run size`: scene sizes for the quiet and the busiest states.
 - `npm run fleet`, `npm run sides`: boat scheduling and which edge each boat
   enters and leaves by.

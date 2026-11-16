@@ -137,24 +137,38 @@ function judge(A, B) {
   return null
 }
 
-// How many pixels the two objects both cover, each painted alone.
-async function shared(page, A, B) {
+// How many pixels the two objects both cover, each painted alone. Only where
+// the boxes of all they paint meet (wakes and shades included, and a margin
+// for strokes, which a box leaves out) can a pixel be shared, so only that
+// is shot.
+const STROKE_ROOM = 30
+async function shared({ page, grab }, A, B) {
+  const boxes = await page.evaluate(orders => {
+    const all = [...document.querySelectorAll('svg *')]
+    return orders.map(order => { const r = all[order].getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom] })
+  }, [A.order, B.order])
+  const [ra, rb] = boxes.map(box => [box[0] - STROKE_ROOM, box[1] - STROKE_ROOM, box[2] + STROKE_ROOM, box[3] + STROKE_ROOM])
+  const x = Math.max(0, Math.floor(Math.max(ra[0], rb[0])))
+  const y = Math.max(0, Math.floor(Math.max(ra[1], rb[1])))
+  const clip = { x, y, width: Math.min(W, Math.ceil(Math.min(ra[2], rb[2]))) - x, height: Math.min(H, Math.ceil(Math.min(ra[3], rb[3]))) - y }
+  if (clip.width <= 0 || clip.height <= 0) return 0
   const mask = async obj => {
     await page.evaluate(({ order }) => {
       const all = [...document.querySelectorAll('svg *')]
       const root = all[order]
-      // A `<use>` draws its target's clone, which takes the target's style, so
-      // the targets it clones (and theirs) stay visible too.
-      const keep = new Set([root, ...root.querySelectorAll('*')])
-      for (const el of keep) {
-        const target = el.tagName === 'use' ? document.getElementById((el.getAttribute('href') || '').slice(1)) : null
-        if (target && !keep.has(target)) for (const t of [target, ...target.querySelectorAll('*')]) keep.add(t)
-      }
-      for (const el of all) el.style.visibility = keep.has(el) ? 'visible' : 'hidden'
-      for (let n = root.parentNode; n && n.tagName !== 'svg'; n = n.parentNode) n.style.visibility = 'hidden'
+      // Only the object's own elements are marked; the sheet hides everything
+      // else outside the defs. A `<use>` clone takes its target's style, so a
+      // target is left unstyled and its clone inherits from the use drawing
+      // it: marking a shared target (every dinghy's hull) showed it in every
+      // boat that uses it, and counted their hulls as shared pixels.
+      for (const el of [root, ...root.querySelectorAll('*')]) el.classList.add('kept')
+      document.querySelector('svg').classList.add('alone')
     }, obj)
-    const png = await page.screenshot({ omitBackground: true, clip: { x: 0, y: 0, width: W, height: H } })
-    await page.evaluate(() => { for (const el of document.querySelectorAll('svg *')) el.style.visibility = '' })
+    const png = await grab({ ...clip, scale: 1 })
+    await page.evaluate(() => {
+      document.querySelector('svg').classList.remove('alone')
+      for (const el of document.querySelectorAll('.kept')) el.classList.remove('kept')
+    })
     return png
   }
   const [a, b] = [await mask(A), await mask(B)]
@@ -167,7 +181,8 @@ async function shared(page, A, B) {
   }, [`data:image/png;base64,${a.toString('base64')}`, `data:image/png;base64,${b.toString('base64')}`])
 }
 
-async function audit(page, frames, outDir, label) {
+async function audit(tab, frames, outDir, label) {
+  const { page } = tab
   // frames: [{ t, objects, seek, load }] in time order within one scene or across.
   const faults = new Map()
   // A pair whose boxes meet but whose pixels did not is not tried again for
@@ -190,7 +205,7 @@ async function audit(page, frames, outDir, label) {
         const seen = faults.get(key)
         if (seen && seen.count >= 1 && seen.confirmed) { seen.count++; seen.last = frame.t; continue }
         if (clear.has(key) && frame.t - clear.get(key) < 5 && frame.t >= clear.get(key)) continue
-        const pixels = await shared(page, A, B)
+        const pixels = await shared(tab, A, B)
         await frame.seek()
         if (pixels < MIN_PIXELS) { clear.set(key, frame.t); continue }
         const at = [Math.min(W - 10, Math.max(0, Math.min(A.box[0], B.box[0]) - 20)), Math.min(H - 10, Math.max(0, Math.min(A.box[1], B.box[1]) - 20))]
@@ -239,11 +254,18 @@ async function main() {
     const page = await (await browser.newContext({ viewport: { width: W, height: H } })).newPage()
     page.on('pageerror', e => console.error(e))
     const setScene = async file => {
-      await page.setContent(`<html><body style="margin:0;background:transparent">${fs.readFileSync(file, 'utf8').replace('<svg ', `<svg width="${W}" height="${H}" `)}</body></html>`)
+      // Paused from the start, so nothing ends before it is seeked; and a
+      // painting-alone rule that hides all but the elements marked to keep.
+      await page.setContent(`<html><head><style>*{animation-play-state:paused!important}svg.alone :not(defs, defs *){visibility:hidden!important}svg.alone .kept{visibility:visible!important}</style></head><body style="margin:0;background:transparent">${fs.readFileSync(file, 'utf8').replace('<svg ', `<svg width="${W}" height="${H}" `)}</body></html>`)
       await page.evaluate(lanes => { window.LANES = lanes }, LANES)
     }
     const seekTo = s => page.evaluate(ms => { for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms } }, s * 1000)
-    return { page, setScene, seekTo }
+    // A lossless PNG encoded for speed, on a transparent page, so what an
+    // object paints alone keeps its own alpha.
+    const cdp = await page.context().newCDPSession(page)
+    await cdp.send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } })
+    const grab = async clip => Buffer.from((await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true, clip })).data, 'base64')
+    return { page, setScene, seekTo, grab }
   }
   // Runs `work` on each item over JOBS browsers at once, in no set order.
   const pool = async (items, work) => {
@@ -267,16 +289,18 @@ async function main() {
     const per = Math.max(2, Math.ceil(times.length / (JOBS * 4)))
     const stretches = []
     for (let k = 0; k < times.length; k += per) stretches.push(times.slice(Math.max(0, k - 1), k + per).map((t, n) => ({ t, warm: k > 0 && n === 0 })))
-    const found = await pool(stretches, async ({ page, setScene, seekTo }, stretch, k) => {
+    const found = await pool(stretches, async (tab, stretch, k) => {
+      const { setScene, seekTo } = tab
       await setScene(file)
-      return audit(page, stretch.map(s => ({ ...s, load: async () => {}, seek: () => seekTo(s.t) })), outDir, `sweep${k}`)
+      return audit(tab, stretch.map(s => ({ ...s, load: async () => {}, seek: () => seekTo(s.t) })), outDir, `sweep${k}`)
     })
     faults = merge(found.flat())
   } else if (mode === 'film') {
     const [out, ...dirs] = args
     outDir = out
     fs.mkdirSync(outDir, { recursive: true })
-    const found = await pool(dirs, async ({ page, setScene, seekTo }, dir) => {
+    const found = await pool(dirs, async (tab, dir) => {
+      const { setScene, seekTo } = tab
       const story = JSON.parse(fs.readFileSync(path.join(dir, 'story.json'), 'utf8'))
       const frames = []
       let loaded = -1
@@ -287,7 +311,7 @@ async function main() {
         for (let t = r.at; t < until; t += 0.5) frames.push({ t: +t.toFixed(2), seam: t === r.at && i > 0, load, seek: () => seekTo(t - r.at) })
       }
       const name = `${path.basename(path.dirname(dir))}-${path.basename(dir)}`
-      return (await audit(page, frames, outDir, name)).map(f => ({ ...f, text: `${path.basename(path.dirname(dir))}/${path.basename(dir)}: ${f.text}` }))
+      return (await audit(tab, frames, outDir, name)).map(f => ({ ...f, text: `${path.basename(path.dirname(dir))}/${path.basename(dir)}: ${f.text}` }))
     })
     faults = found.flat()
   } else {

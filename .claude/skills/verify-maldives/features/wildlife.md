@@ -5,8 +5,13 @@
 - A whale shark feeds at the surface far out (y 458, just under the
   horizon), crossing left to right about once every nine minutes. The far
   water is too deep to see into, so only what breaks the surface shows: the
-  top of its spotted back, the dorsal fin and the tail tip, with ripples.
-  It keeps to its own lane, well behind the dorsal-fin shark (y 542).
+  top of its spotted back, the dorsal fin and the tail tip, with no wake:
+  at that distance hard white wake lines read as scratches, and the sea's
+  own ripple lines carry it. It keeps to its own lane, well behind the
+  dorsal-fin shark (y 542).
+- The dorsal fin has foam where it meets the water, a ripple off its
+  leading edge and a two-armed wake (`.fwk`) that fades along `#fwg` and
+  flows away from it (`wflow`, dashes summing to its 19); dimmer at night.
 - The reef runs the whole width of the near shallows, lifted 70 px so the
   prompt box does not hide its crest: two bumpy ridges, the far one paler,
   with coral heads packed along the near crest (densest at the sides of the
@@ -50,7 +55,7 @@
   anything visible, or the life blinks out and back on each redraw (the seam
   check flags it as a change on a redraw that changed nothing). Only every
   boat out with fireworks, a whirlpool and a leap at once needs the third
-  tier (`npm run size`: busiest land 133009 plain, 126498 without the life).
+  tier (`npm run size`: busiest land 129152 without the life).
   `npm run fuzz` fails any scene past 131072 and prints the largest.
 - A reef piece that moves (seagrass, anemones) sways in a group of its own
   around its clone, never inside the shape in the defs: an animation inside
@@ -78,6 +83,16 @@
   (`#sr`), shoal B bannerfish (`#ss`), each part coloured by a class with a night version. The dolphin is one
   shape (`#dl`, defined where the sea life is drawn) that every leaper
   clones: it is drawn six times, so inlining it cost over 2 KB.
+- A leap is a parabola worked out in `LEAP_CSS`: the centre leaves the
+  water at the pod's x 0 and re-enters at `LEAP_REACH`, the body turned
+  along its path (exact quadratic easings for the height, nine rotation
+  stops), so the whole body passes through one hole each way. Each dolphin,
+  the follower too, has its own splashes at its two holes (`splashes()`:
+  ring `#drg` and spray `#dsp`), timed from when its nose and tail cross
+  the surface and run on its own `--d`. Check a change with frames every
+  0.3 s over the leap (pod 0 leaps at about 44.7-47.8 s), day and night:
+  the spray must rise as the nose breaks the surface and sit where the body
+  goes through, not behind or ahead of it.
 - A grey heron, in a 300 s round, keeps to two shores: the shallows just
   off the beach's far (right) end (front, about 0-96 s) and the back of the
   sand behind the palms (about 150-246 s). On each it wades up and down

@@ -55,6 +55,69 @@ function f(n: number): string {
   return String(Math.round(n * 10) / 10)
 }
 
+// A dolphin's leap follows a parabola: its centre leaves the water at x 0,
+// peaks LEAP_HIGH above it and drops back in at LEAP_REACH, with the body
+// turned along its path the whole way, so every part of it breaks the surface
+// through the same two holes. Under the surface, where it is clipped, the path
+// goes on down to LEAP_DEEP, where the dolphin waits out of sight between
+// leaps, swimming back under the surface to where it set out from over the
+// last LEAP_BACK percent of the round. The leap takes LEAP_SPAN percent of
+// LEAP_EVERY from LEAP_FROM; its splashes come when the nose and then the tail
+// cross the surface.
+const LEAP_REACH = 90
+const LEAP_HIGH = 30
+const LEAP_DEEP = 36
+const LEAP_FROM = 86
+const LEAP_SPAN = 6
+const LEAP_BACK = 4
+// The lead dolphin's size, and its nose and tail along its length, which the
+// splashes are timed for.
+const LEAP_SIZE = 0.5
+const NOSE_X = 56
+const TAIL_X = -63
+
+const LEAP_CSS = (() => {
+  const c = LEAP_REACH / 2
+  const reach = c * Math.sqrt(1 + LEAP_DEEP / LEAP_HIGH)
+  const [x0, x1] = [c - reach, c + reach]
+  const yAt = (x: number): number => LEAP_HIGH * (((x - c) / c) ** 2 - 1)
+  const turnAt = (x: number): number => Math.atan((2 * LEAP_HIGH * (x - c)) / (c * c))
+  const pctAt = (x: number): number => LEAP_FROM + (LEAP_SPAN * (x - x0)) / (x1 - x0)
+  const n = (v: number): string => String(Math.round(v * 100) / 100)
+  const deg = (x: number): string => n((turnAt(x) * 180) / Math.PI)
+  // Where a point `along` the body crosses the surface, rising or sinking.
+  const crossing = (along: number, rising: boolean): number => {
+    const steps = 2000
+    let was = 0
+    for (let i = 0; i <= steps; i++) {
+      const x = x0 + ((x1 - x0) * i) / steps
+      const y = yAt(x) + along * LEAP_SIZE * Math.sin(turnAt(x))
+      if (i > 0 && (rising ? was > 0 && y <= 0 : was < 0 && y >= 0)) {
+        return pctAt(x)
+      }
+      was = y
+    }
+    return rising ? LEAP_FROM : LEAP_FROM + LEAP_SPAN
+  }
+  const end = LEAP_FROM + LEAP_SPAN
+  const turns = Array.from({ length: 9 }, (_, i) => x0 + ((x1 - x0) * i) / 8)
+  const spin = turns.map((x, i) => `${i === 0 ? `0%,${LEAP_FROM}` : i === 8 ? `${end}%,${100 - LEAP_BACK}` : n(pctAt(x))}%{transform:rotate(${deg(x)}deg)}`).join('') + `100%{transform:rotate(${deg(x0)}deg)}`
+  // One second, in percent of a leap round.
+  const s = 100 / LEAP_EVERY
+  const splash = (name: string, head: number, tail: number): string => {
+    const mid = (head + tail) / 2
+    return `@keyframes sp${name}{0%,${n(head)}%{opacity:0;transform:scale(.3,.1)}${n(mid)}%{opacity:.85;transform:scale(1)}${n(tail + 0.7 * s)}%,100%{opacity:0;transform:scale(1.15,1.3)}}` +
+      `@keyframes rg${name}{0%,${n(head)}%{opacity:0;transform:scale(.4)}${n(head + 0.25 * s)}%{opacity:.85;transform:scale(.7)}${n(tail + 1.6 * s)}%,100%{opacity:0;transform:scale(2.3)}}` +
+      `.sp${name}{transform-box:fill-box;transform-origin:50% 100%;${loop(`sp${name}`, LEAP_EVERY, 'ease-out')}}` +
+      `.rg${name}{transform-box:fill-box;transform-origin:center;${loop(`rg${name}`, LEAP_EVERY, 'ease-out')}}`
+  }
+  return `@keyframes leapX{0%,${LEAP_FROM}%{transform:translateX(${n(x0)}px)}${end}%,${100 - LEAP_BACK}%{transform:translateX(${n(x1)}px)}100%{transform:translateX(${n(x0)}px)}}` +
+    `@keyframes leapY{0%,${LEAP_FROM}%{transform:translateY(${LEAP_DEEP}px);animation-timing-function:cubic-bezier(.33,.67,.67,1)}${n(LEAP_FROM + LEAP_SPAN / 2)}%{transform:translateY(${-LEAP_HIGH}px);animation-timing-function:cubic-bezier(.33,0,.67,.33)}${end}%,100%{transform:translateY(${LEAP_DEEP}px)}}` +
+    `@keyframes leapR{${spin}}` +
+    splash('O', crossing(NOSE_X, true), crossing(TAIL_X, true)) +
+    splash('I', crossing(NOSE_X, false), crossing(TAIL_X, false))
+})()
+
 // The lanes under the water take turns. Over each VISIT_ROUND only one
 // swimmer at a time crosses, in an uneven order and after uneven gaps, so the
 // sea is often empty. Each still swims its own cycle, crossing in the first
@@ -161,7 +224,7 @@ const STYLE = `
 .mb{fill:#2e909e}.mm{fill:#88dcdc;opacity:.4}
 .rbase{fill:#0a6278;opacity:.22}.kl{fill:none;stroke:#fff;opacity:.38}.sg{fill:none;stroke:#35b37e}
 .k1{color:#ff8fa3}.k2{color:#ffa35c}.k3{color:#b98ae0}.k4{color:#ffd86b}.k5{color:#4fd0bd}.k6{color:#f2665f}.k7{color:#4f86e8}.k8{color:#93cf62}.rk{color:#3d8c94}use[href^="#q"]{fill:currentColor}
-.fin{fill:#33505f}.dol{fill:#3f6f8f}.dolb{fill:#c9dfe9}.dolh{fill:#5b8eab}
+.fin{fill:#33505f}.fwk{opacity:.85;stroke-dasharray:16 3;animation:wflow 1.3s linear infinite}.fcl{opacity:.6}.dol{fill:#3f6f8f}.dolb{fill:#c9dfe9}.dolh{fill:#5b8eab}
 .ff{fill:#3f86c2}.ffw{fill:#e6f6ff;opacity:.9}
 .sna{fill:#e2c550}.snb{fill:#e8e6aa}.snc{stroke:#3f95e5}.bna{fill:#e3eee3}.bns{stroke:#e3eee3}.bnb{fill:#ecd657}
 .ham{fill:#f6f2e6}
@@ -196,7 +259,7 @@ const STYLE = `
   .rbase{fill:#03202b;opacity:.35}.kl{opacity:.16}.sg{stroke:#1c5a44}
   .k1{color:#7a4f63}.k2{color:#7d5a3c}.k3{color:#5a4a7a}.k4{color:#7d7040}.k5{color:#2a6f69}.k6{color:#70393c}.k7{color:#2c4470}.k8{color:#4b6a37}.rk{color:#1b4248}
   .lf{opacity:.55}.beam{opacity:.35}
-  .fin{fill:#0c1c26}.dol{fill:#1c3447}.dolb{fill:#5f7f95}.dolh{fill:#2a4a60}
+  .spl{opacity:.55}.fin{fill:#0c1c26}.fwk{opacity:.45}.fcl{opacity:.35}.dol{fill:#1c3447}.dolb{fill:#5f7f95}.dolh{fill:#2a4a60}
   .ff{fill:#1f4666}.ffw{fill:#8fb2cc}
   .sna{fill:#8f914f}.snb{fill:#93a586}.snc{stroke:#2b74aa}.bna{fill:#90aaa9}.bns{stroke:#90aaa9}.bnb{fill:#959c53}
   .ham{fill:#8f8a7c}
@@ -235,11 +298,7 @@ const STYLE = `
 @keyframes flipA{0%,100%{transform:rotate(-16deg)}50%{transform:rotate(14deg)}}
 @keyframes flipB{0%,100%{transform:rotate(16deg)}50%{transform:rotate(-14deg)}}
 @keyframes wingflap{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.68)}}
-@keyframes leapX{0%,94%{transform:translateX(0)}100%{transform:translateX(90px)}}
-@keyframes leapY{0%,94%{transform:translateY(40px);animation-timing-function:ease-out}97%{transform:translateY(-26px);animation-timing-function:ease-in}100%{transform:translateY(40px)}}
-@keyframes leapR{0%,94%{transform:rotate(-48deg)}100%{transform:rotate(48deg)}}
-@keyframes splashA{0%,94.3%{opacity:0;transform:scale(.3)}95%{opacity:.9;transform:scale(1)}97.5%,100%{opacity:0;transform:scale(1.8)}}
-@keyframes splashB{0%{opacity:.5;transform:scale(1.4)}2%{opacity:0;transform:scale(1.9)}2.1%,98.6%{opacity:0;transform:scale(.3)}99.2%{opacity:.9;transform:scale(1)}100%{opacity:.5;transform:scale(1.4)}}
+${LEAP_CSS}
 @keyframes pod{0%,33.2%{opacity:1}33.4%,100%{opacity:0}}
 @keyframes ox{0%,100%{transform:translateX(calc(var(--r) * -1))}50%{transform:translateX(var(--r))}}
 @keyframes oy{0%,100%{transform:translateY(0)}25%{transform:translateY(calc(var(--q) * -1))}75%{transform:translateY(var(--q))}}
@@ -324,9 +383,7 @@ ${LANE_GATES}
 .lpX{${loop('leapX', LEAP_EVERY, 'linear')}}
 .lpY{${loop('leapY', LEAP_EVERY, 'linear')}}
 .lpR{${loop('leapR', LEAP_EVERY, 'linear')}}
-.spA{transform-box:fill-box;transform-origin:center;${loop('splashA', LEAP_EVERY, 'linear')}}
 .pod{${loop('pod', LEAP_EVERY * 3, 'linear')}}
-.spB{transform-box:fill-box;transform-origin:center;${loop('splashB', LEAP_EVERY, 'linear')}}
 .mstep{${loop('mstep', 0.5, 'ease-in-out')}}
 .mblink{transform-box:fill-box;transform-origin:center;${loop('mblink', 11, 'linear')}}
 .mwave{${loop('mwave', 0.45, 'ease-in-out')}}
@@ -444,10 +501,10 @@ const FLYER = `<path class="ffw" d="M4 -2Q-4 -18 -16 -20Q-8 -10 -4 -1ZM4 2Q-2 12
 // One four-pointed star of radius `r`, for the twinkles on the water.
 const SPARK = (r: number): string => `<path id="k${r}" d="M0 ${-r * 2}L${r / 2} 0L0 ${r * 2}L${-r / 2} 0ZM${-r * 2} 0L0 ${r / 2}L${r * 2} 0L0 ${-r / 2}Z"/>`
 
-const DEFS = `<defs>
+const DEFS = `<defs><g id="dsp" fill="#fff"><path d="M-2 0Q-7 -9 -12 -7M-1 -1Q-3 -11 -7 -13M1 -1Q2 -13 5 -14M3 -1Q8 -10 12 -8M4 0Q10 -4 14 -2" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round"/><circle cx="-14" cy="-4" r=".9"/><circle cx="-9" cy="-15" r="1"/><circle cx="7" cy="-17" r="1.1"/><circle cx="15" cy="-10" r=".9"/></g><g id="drg"><ellipse rx="10" ry="2.4" fill="none" stroke="#fff" stroke-width="1.4"/><ellipse rx="6" ry="1.3" fill="#fff" opacity=".5"/></g>
 ${REEF_KINDS}<g id="sr"><path class="sna" d="M12 0C9 -5 3 -6.5 -3 -5.5Q-1 -8 -6 -7.5L-7 -4L-10 -2L-16 -6L-14 0L-16 6L-10 2L-7 4C-1 6.5 8 5.5 12 0Z"/><path class="snb" d="M11 1C7 4 0 5 -7 3C0 2.6 6 2 11 1Z"/><path class="snc" fill="none" stroke-width=".9" stroke-linecap="round" d="M9 -2.6Q2 -4.4 -7 -2.4M10 -.8Q1 -1.8 -8 -.4M9 1Q2 1 -7 1.4"/><circle cx="8.2" cy="-1.6" r="1" fill="#1b1f22"/></g><g id="ss"><path class="bna" d="M9 1C9 -4 5 -8 0 -8.5L-2 -13Q-3 -9 -5 -7C-8 -4 -9 -1 -9 1C-8 5 -3 7.5 2 7C6 6.5 9 4 9 1Z"/><path class="bnb" d="M-8.6 -1L-14 -4.5V6L-8.4 3ZM-6 -6C-8 -4 -8.8 -2 -9 0L-7 -1Z"/><path fill="#26292b" d="M5 -6.2L7 4.4Q5 6.4 2.6 6.9L.2 -8.4Q3 -8 5 -6.2ZM-3.4 -7.6L-6.6 5.6Q-7.6 5 -8.3 3.8L-6 -6.3Z"/><path class="bns" fill="none" stroke-width=".8" stroke-linecap="round" d="M-1.6 -12Q-6 -18 -15 -19"/><circle cx="6.4" cy="-1.2" r=".9" fill="#1b1f22"/></g>
 ${CLOUD}<g id="fy">${FLYER}</g>
-<pattern id="wsp" width="13" height="11" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.8"/><circle cx="9.5" cy="8.5" r="1.4"/></pattern>
+<linearGradient id="fwg" gradientUnits="userSpaceOnUse" x1="-10" y1="0" x2="-64" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".8"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><pattern id="wsp" width="13" height="11" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.8"/><circle cx="9.5" cy="8.5" r="1.4"/></pattern>
 ${SPARK(2)}${SPARK(3)}${SPARK(4)}
 <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sky0"/><stop offset=".5" class="sky1"/><stop offset=".85" class="sky2"/><stop offset="1" class="sky3"/></linearGradient>
 <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="sea0"/><stop offset=".18" class="sea1"/><stop offset=".45" class="sea2"/><stop offset=".75" class="sea3"/><stop offset="1" class="sea4"/></linearGradient>
@@ -1399,7 +1456,10 @@ const MANTA_BODY = 'M47 -10C44 -15 38 -16 32 -18C18 -26 4 -46 -12 -80C-12 -58 -2
 const MANTA = `<path class="shade" transform="translate(-5 12) scale(.96)" d="${MANTA_BODY}"/>
 <path class="mb" d="M-37 -1.5L-96 0L-37 1.5Z"/><g class="wingf"><path class="mb" d="${MANTA_BODY}"/><path class="mm" d="M22 -10C14 -21 4 -27 -8 -28C-2 -18 8 -11 22 -7ZM22 10C14 21 4 27 -8 28C-2 18 8 11 22 7Z"/></g>`
 
-const FIN = `<path class="fin" d="M13 0Q5 -19 -9 -26Q-7 -11 -13 0Z"/><path d="M-13 1q-24 1 -52 7M-11 3q-20 6 -40 14" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".5"/>`
+// A shark's fin cutting the surface: foam where it meets the water, a ripple
+// off its leading edge, and a wake that opens behind it in two arms, the far
+// one flatter, fading as it trails and flowing away from the fin.
+const FIN = `<path class="fin" d="M13 0Q5 -19 -9 -26Q-7 -11 -13 0Z"/><g fill="none" stroke-linecap="round"><g class="fwk"><path d="M-12 0Q-36 0 -64 -4" stroke="url(#fwg)" stroke-width="1.4"/><path d="M-10 2Q-30 5 -60 13" stroke="url(#fwg)" stroke-width="1.6"/></g><g class="fcl"><path d="M-16 0.5Q0 -2.5 16 0.5" stroke="#fff" stroke-width="2.2"/><path d="M16 0Q23 0 27 3" stroke="#fff" stroke-width="1.3"/></g></g>`
 
 const DOLPHIN = `<path class="dol" d="M56 2Q52 -1 46 -2C44 -8 38 -12 30 -13C12 -16 -16 -14 -36 -6L-50 -2C-54 -6 -58 -11 -63 -13Q-60 -6 -57 0Q-60 6 -63 13C-58 11 -54 6 -50 2C-30 8 0 14 28 8Q40 6 48 5Q54 5 56 2ZM5 -13C6 -24 -2 -32 -12 -34C-8 -26 -8 -20 -11 -12ZM22 7C18 14 12 18 6 19C10 14 12 10 14 7Z"/><path class="dolb" d="M48 4C30 10 0 13 -30 6C-6 9 20 7 46 1Z"/><path class="dolh" d="M28 -11C10 -14 -14 -12 -32 -5C-14 -9 10 -11 28 -11Z"/><path fill="none" stroke="#24465a" stroke-linecap="round" d="M55 2.6Q49 3.4 44 1.4"/><circle cx="38" cy="-4" r="1.5" fill="#13232e"/>`
 
@@ -1436,13 +1496,19 @@ function leaper(x: number, s: number, phase: number): string {
 // Two dolphins leaping together at one spot. A leap comes round every
 // LEAP_EVERY seconds, and each pod is in sight for only one round in three, a
 // different one from the others, so where and when the next leap comes varies.
+// A dolphin's splashes, where it leaves the water and where it goes back in:
+// spray thrown up and a ring of foam spreading out.
+function splashes(x: number, s: number, phase: number): string {
+  const at = (hole: number, when: 'O' | 'I'): string => `<g transform="translate(${hole} 0) scale(${f3(s / LEAP_SIZE)})"><g class="rg${when}"><use href="#drg"/></g><g class="sp${when}"><use href="#dsp"/></g></g>`
+  return `<g class="spl" style="--d:${phase}">${at(x, 'O')}${at(x + LEAP_REACH, 'I')}</g>`
+}
+
 function pod(x: number, y: number, s: number, phase: number, turn: number): string {
-  const ring = 'fill="none" stroke="#fff" stroke-width="1.6"'
   // The round in sight starts a little into it, after the last splash has faded.
   const sight = phase - LEAP_EVERY * 0.1 + LEAP_EVERY * turn
   return `<g class="pod" style="--d:${f(sight)}"><g transform="translate(${x} ${y}) scale(${s})" style="--d:${phase}">
-<g clip-path="url(#surf)">${leaper(0, 0.5, phase)}${leaper(-44, 0.42, phase - 0.7)}</g>
-<ellipse class="spA" cx="15" cy="0" rx="16" ry="3.5" ${ring}/><ellipse class="spB" cx="75" cy="0" rx="16" ry="3.5" ${ring}/></g></g>`
+<g clip-path="url(#surf)">${leaper(0, LEAP_SIZE, phase)}${leaper(-44, 0.42, phase - 0.7)}</g>
+${splashes(0, LEAP_SIZE, phase)}${splashes(-44, 0.42, phase - 0.7)}</g></g>`
 }
 
 // The reef and the open lagoon lie on the bottom, under every swimmer, which
@@ -2462,7 +2528,7 @@ const HERMIT = (() => {
 // dorsal fin, the tip of its tail far behind, and the ripples it pushes. It
 // passes through only once in a long while.
 const WHALE_BACK = 'M-78 1C-40 -6 40 -9 88 -4C96 -3 100 -1 101 1Z'
-const WHALE_SHARK = `<path d="${WHALE_BACK}" class="wsb"/><path d="${WHALE_BACK}" fill="url(#wsp)"/><path d="M26 -3Q18 -27 -1 -37Q4 -19 -6 -4ZM-112 1Q-118 -15 -131 -27Q-128 -12 -124 1Z" class="wsd"/><path d="M101 2q14 1 24 5M-80 3q-26 2 -50 8M-126 3q-16 2 -30 7" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" opacity=".55"/>`
+const WHALE_SHARK = `<path d="${WHALE_BACK}" class="wsb"/><path d="${WHALE_BACK}" fill="url(#wsp)"/><path d="M26 -3Q18 -27 -1 -37Q4 -19 -6 -4ZM-112 1Q-118 -15 -131 -27Q-128 -12 -124 1Z" class="wsd"/>`
 
 // Specks of glowing plankton in the shallows round the island after dark,
 // in three sets that brighten and fade out of step.

@@ -1933,8 +1933,9 @@ type Pastime = { cls: string; span: Span; sway: readonly (readonly [number, stri
 // have it do; it has its rod, spyglass and tune for those of its pastimes on
 // deck that `busy` names. Hailing the person, it puts them by and waves and
 // hops without a pause, in a beat that starts as the hailing does; once that
-// stops, a hop under way comes down rather than vanishing.
-function rider(flag: Flag, busy: readonly string[]): string {
+// stops, a hop under way comes down rather than vanishing. `isStill` has it
+// just stand, out of the antics, though it still hails.
+function rider(flag: Flag, busy: readonly string[], isStill = false): string {
   const isHailing = flag.to !== 'none'
   const hailed = flag.hailed ?? flag.age
   let hop = ''
@@ -1948,10 +1949,12 @@ function rider(flag: Flag, busy: readonly string[]): string {
   }
   const arm = isHailing
     ? `<g class="mwave">${clay(M_ARM_UP)}</g>`
-    : `<g class="can">${clay(M_ARM_R)}</g><g class="caw" opacity="0"><g class="mwave">${clay(M_ARM_UP)}</g></g>`
-  const has = (cls: string): boolean => !isHailing && busy.includes(cls)
+    : isStill
+      ? clay(M_ARM_R)
+      : `<g class="can">${clay(M_ARM_R)}</g><g class="caw" opacity="0"><g class="mwave">${clay(M_ARM_UP)}</g></g>`
+  const has = (cls: string): boolean => !isHailing && !isStill && busy.includes(cls)
   const part = (cls: string, inner: string): string => (has(cls) ? `<g class="${cls}" opacity="0">${inner}</g>` : '')
-  return `<g class="ca"><g ${hop}>${has('cfi') ? rodOf('cfi', 9.6) : ''}${clay(M_BODY + M_ARM_L + M_LEGS_A + M_LEGS_B)}${arm}${M_FACE}${part('csp', M_SPYGLASS)}${part('chu', M_NOTES)}</g></g>`
+  return `<g${isStill ? '' : ' class="ca"'}><g ${hop}>${has('cfi') ? rodOf('cfi', 9.6) : ''}${clay(M_BODY + M_ARM_L + M_LEGS_A + M_LEGS_B)}${arm}${M_FACE}${part('csp', M_SPYGLASS)}${part('chu', M_NOTES)}</g></g>`
 }
 
 // The mascot on its way to or from the boat, at the scale it has on the sand.
@@ -2226,15 +2229,16 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   const pastime = ON_DECK.find(p => act !== undefined && p.span[0] === act[0])?.cls
   // The mascot on deck, with what it needs for its pastimes: all of them on
   // the way out, only the one it is finishing on the way home. A fetch draws
-  // the boat twice, on its course and on its circuit, and the second copy of
-  // the mascot is a <use> of the first.
+  // the boat twice, on its course and on its circuit: just aboard, the mascot
+  // stands while the boat sets out, and takes up its antics only once the
+  // boat is out on its circuit.
   const figure = rider(flag, isPlain ? [] : voyage.phase === 'fetch' ? ON_DECK.map(p => p.cls) : isCalming && pastime !== undefined ? [pastime] : [])
-  const isTwice = voyage.phase === 'fetch' && t < plan.settled
+  const aboard = voyage.phase === 'fetch' ? rider(flag, [], true) : figure
   const under = (span: number, captain: string | undefined): { svg: string; css: string } => {
     const now = along(plan.boat, t)
     const side = facingAt(turning, t)
     const bow = bowOf(LEAD_BOAT, route.scale, `${once('vbb', span, t)} transform="scale(${f(1 - Math.abs(side))} 1)"`)
-    const crew = captain === undefined ? '' : crewOf(isTwice ? `<g id="v98">${figure}</g>` : figure, route.scale, captain, `${once('vbr', span, t)} transform="translate(${f(-20 * side)} 0)"`)
+    const crew = captain === undefined ? '' : crewOf(aboard, route.scale, captain, `${once('vbr', span, t)} transform="translate(${f(-20 * side)} 0)"`)
     const sizes = sizeTrack('vbs', plan.boat, span, route.scale)
     const boat = `<g ${once('vbf', span, t)} transform="scale(${f(side)} 1)">${hull(once('vbw', span, t))}</g>${bow}${crew}`
     return {
@@ -2286,7 +2290,7 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
     const sweep = f3(t - plan.settled + CIRCUIT_START)
     const [far, near] = sizesOf(LEAD_BOAT)
     const circuit = `<g style="${sweepOf(route.seconds)};--b:${sweep};--r:${route.rx}px;--q:${route.ry}px;${driftOf(route.drift ?? DRIFT_TICKS / FPS)};--c:${f3(Number(sweep) + route.driftFrom * (route.drift ?? 0))};--z0:${far};--z1:${near};--d:0" transform="translate(${route.cx} ${route.cy})">
-<g class="bx">${roamed(LEAD_BOAT, sweep, `<g class="bf">${hull(undefined, 1)}</g>${bowOf(LEAD_BOAT, 1, 'class="bw"')}${crewOf(isTwice ? '<use href="#v98"/>' : figure, 1, '', 'class="br"')}`)}</g></g>`
+<g class="bx">${roamed(LEAD_BOAT, sweep, `<g class="bf">${hull(undefined, 1)}</g>${bowOf(LEAD_BOAT, 1, 'class="bw"')}${crewOf(figure, 1, '', 'class="br"')}`)}</g></g>`
     if (t >= plan.settled) {
       return { boat: circuit, depth, x, sails: 0, early: '', late: '', css: faces + antics }
     }

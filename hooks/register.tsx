@@ -54,12 +54,12 @@ const { theme, problems } = makeColors({
 
 const LOOK: ThemeSetArgs = {
   colors: theme,
-  backdrop: { scene: 'maldives', glass: { blur: 0, opacity: 0.1 } },
+  backdrop: { scene: 'maldives', glass: { blur: 0, opacity: 0 } },
 }
 // How opaque the app's panels may be over the backdrop, so their text reads
-// more easily, from none to most; a tenth unless chosen.
+// more easily, from none to most; none unless chosen.
 const GLASSES: readonly number[] = [0, 0.1, 0.25, 0.4, 0.6, 0.8]
-const GLASS = 0.1
+const GLASS = 0
 
 const mood = atom({ plugin: 'maldives', key: 'mood' } as const, 'idle' as Mood)
 const need = atom({ plugin: 'maldives', key: 'need' } as const, 'permission' as Need)
@@ -105,7 +105,8 @@ const MENUS: readonly { menu: Menu; label: string }[] = [
   { menu: 'claude', label: 'Clawd' },
   { menu: 'wildlife', label: 'Wildlife' },
 ]
-const controls = atom({ plugin: 'maldives', key: 'controls' } as const, false)
+// The panel is shown from the start of a session, until it is closed.
+const controls = atom({ plugin: 'maldives', key: 'controls' } as const, true)
 // The panels' opacity and the panel's language in force, kept from the store.
 const shownGlass = atom({ plugin: 'maldives', key: 'glass' } as const, GLASS)
 type Lang = 'en' | 'zh'

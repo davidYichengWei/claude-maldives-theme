@@ -23,27 +23,27 @@ const BAND = {
   },
 } as const
 
-test('/maldives panel shows the Control Panel above the prompt, Close hides it', async ($, on) => {
+test('the Control Panel is above the prompt from the start, Close hides it and /maldives panel brings it back', async ($, on) => {
   // Each hook here stands for the engine: what it draws when the mod passes.
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>engine</Text>
   })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
-  expect(await ui.find({ type: 'Text', text: 'Control Panel' })).toBeUndefined()
-
-  expect(await $.command.run({ command: 'maldives', args: 'panel' })).toMatchObject({ text: 'Control Panel is above the prompt.' })
   expect((await ui.find({ type: 'Text', text: 'Control Panel' }))?.text).toBe('Control Panel')
   // The top row alone until a menu is opened.
   expect(await ui.find({ key: 'scheme-dark' })).toBeUndefined()
 
   await ui.press({ key: 'close' })
   expect(await ui.find({ type: 'Text', text: 'Control Panel' })).toBeUndefined()
+  expect((await ui.find({ type: 'Text', text: 'engine' }))?.text).toBe('engine')
+
+  expect(await $.command.run({ command: 'maldives', args: 'panel' })).toMatchObject({ text: 'Control Panel is above the prompt.' })
+  expect((await ui.find({ type: 'Text', text: 'Control Panel' }))?.text).toBe('Control Panel')
   await ui.unmount()
 })
 
 test('a menu opens its row below, and pressing it again closes it', async ($, on) => {
-  await $.command.run({ command: 'maldives', args: 'panel' })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
 
   await ui.press({ key: 'menu-appearance' })
@@ -63,7 +63,6 @@ test('the boats step within their circuits, and Reset goes back to what Claude i
   on('clock.now', () => ({ value: (now += 100) }))
   on('clock.after', () => ({ value: undefined }))
   on('agent.list', () => ({ value: [] }))
-  await $.command.run({ command: 'maldives', args: 'panel' })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
 
   await ui.press({ key: 'menu-boats' })
@@ -88,7 +87,6 @@ test('the boats step within their circuits, and Reset goes back to what Claude i
 test('the island pastimes are offered only while Claude is idle or done', async ($, on) => {
   let now = 1_000_000
   on('clock.now', () => ({ value: (now += 100) }))
-  await $.command.run({ command: 'maldives', args: 'panel' })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
 
   await ui.press({ key: 'menu-claude' })
@@ -116,7 +114,6 @@ test('Wildlife calls up at most three of a kind at once, more once they have gon
   let now = 1_000_000
   on('clock.now', () => ({ value: now }))
   on('clock.after', () => ({ value: undefined }))
-  await $.command.run({ command: 'maldives', args: 'panel' })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   const isDim = async (key: string): Promise<boolean> => (await ui.find({ key }))?.props.dimColor === true
 
@@ -154,7 +151,6 @@ test('the flying fish leap on a press, once at a time, and the button goes out a
   let now = 1_000_000
   on('clock.now', () => ({ value: now }))
   on('clock.after', () => ({ value: undefined }))
-  await $.command.run({ command: 'maldives', args: 'panel' })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   await ui.press({ key: 'menu-wildlife' })
   expect(await isLit(ui, 'call-flyingFish')).toBe(false)
@@ -186,7 +182,6 @@ test('the panel speaks Chinese once chosen, every menu of it, and English again'
     return { value: undefined }
   })
   on('store.get', ($, e) => ({ value: kept.get(e.key) }))
-  await $.command.run({ command: 'maldives', args: 'panel' })
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
   // Every word shown: the Texts and the Buttons' labels.
   const shown = async (): Promise<string[]> => [
@@ -215,7 +210,6 @@ test('a survey keeps the band', async ($, on) => {
     const { Text } = $.ui.resolve(e)
     return <Text>survey</Text>
   })
-  await $.command.run({ command: 'maldives', args: 'panel' })
   const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, hasSurvey: true }, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: 'Control Panel' })).toBeUndefined()
   expect((await ui.find({ type: 'Text', text: 'survey' }))?.text).toBe('survey')

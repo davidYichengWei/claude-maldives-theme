@@ -1,0 +1,6 @@
+{
+  "about": "A new turn while the boat sails away from the dock: it slows to a stop, comes about where it stopped, then makes back for the dock",
+  "start": { "mood": "idle", "home": 600 },
+  "events": [[0, "turn"], [30, "answer"], [44, "turn"]],
+  "frames": { "from": 40, "to": 62, "every": 0.25 }
+}

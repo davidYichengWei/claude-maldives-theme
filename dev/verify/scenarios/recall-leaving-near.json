@@ -1,0 +1,6 @@
+{
+  "about": "A new turn just after the boat has set Clawd ashore and pulled away: it slows to a stop and backs onto the dock without coming about",
+  "start": { "mood": "idle", "home": 600 },
+  "events": [[0, "turn"], [30, "answer"], [39, "turn"]],
+  "frames": { "from": 34, "to": 56, "every": 0.25 }
+}

@@ -53,10 +53,20 @@ const AFT: Point = { x: DOCK.x - DECK, y: DOCK.y }
 const GATE_X: Record<Side, number> = { L: -110, R: 1710 }
 const LANE_Y: Record<Side, number> = { L: 770, R: 830 }
 // How long the boat takes to come about, and the mascot to hop on or off.
-export const TURN_S = 0.9
+export const TURN_S = 2
 const HOP_S = 0.8
 
 const EASE: Curve = [0.42, 0, 0.58, 1]
+// Slowing evenly from full speed to a stop.
+const COAST: Curve = [1 / 3, 2 / 3, 2 / 3, 1]
+// How hard the boat slows when called back under way, in px a second, a
+// second: it carries on a way before it comes about.
+const COAST_DECEL = 45
+// How near the dock a boat called back with the dock astern backs onto it,
+// rather than coming about to make for it and again to lie there; and how
+// fast it backs, in px a second.
+const ASTERN_MAX = 160
+const ASTERN_SPEED = 25
 const ARRIVE: Curve = [0.3, 0.4, 0.5, 1]
 const DEPART: Curve = [0.45, 0, 0.7, 0.75]
 // How fast the boat crosses the water to and from the edges, in px a second:
@@ -293,9 +303,13 @@ export type Voyage = {
   // The trip began with the mascot in the air, `p` of the way through a hop
   // from `a` to `b`: it comes down at `b` before anything else.
   hop?: Hop
+  // The trip began with the boat under way: it carries on to `to`, slowing to
+  // a stop over `seconds`, before it sets out on this trip.
+  coast?: Coast
 }
 
 export type Hop = { a: Point; b: Point; p: number }
+export type Coast = { to: Point; seconds: number }
 
 export const AT_HOME: Voyage = { phase: 'land', at: 0, boat: null, clawd: HOME, aboard: false, greet: false }
 
@@ -314,9 +328,14 @@ function straight(from: number, to: number, a: Point, b: Point, curve: Curve, st
   return { from, to, at, heading: b.x >= a.x ? 1 : -1, stride, curve }
 }
 
+// The boat lying still at `at`, heading `heading`.
+function still(from: number, to: number, at: Point, heading: 1 | -1): Leg {
+  return { from, to, at: () => at, heading, stride: false, curve: EASE }
+}
+
 // The boat lying at the dock, by default stern to the jetty.
 function moored(from: number, to: number, heading: 1 | -1 = -1): Leg {
-  return { from, to, at: () => DOCK, heading, stride: false, curve: EASE }
+  return still(from, to, DOCK, heading)
 }
 
 // Where a hop from `a` to `b` is, `p` of the way through: rising between them.
@@ -435,8 +454,40 @@ export type Plan = {
   settled: number
 }
 
-export function planOf(voyage: Voyage): Plan {
+// `settle` holds the boat where it is for that many seconds before it sets out
+// (the mascot, on foot, goes its way meanwhile).
+export function planOf(voyage: Voyage, settle = 0): Plan {
   const from = voyage.boat
+  const coast = voyage.coast
+  if (coast !== undefined && from !== null) {
+    // Called back under way. Where the new course carries on much the same
+    // way, the boat sets out on it at the speed it has; elsewhere it carries
+    // on along its course as it slows to a stop, and sets out from there.
+    const rest = planOf({ ...voyage, coast: undefined })
+    const [first, ...others] = rest.boat
+    const reach = gap(from, coast.to)
+    if (first !== undefined && first.curve !== undefined && first.from === 0) {
+      const ahead = first.at(1)
+      const span = gap(from, ahead)
+      const cos = span < 1 ? 0 : ((coast.to.x - from.x) * (ahead.x - from.x) + (coast.to.y - from.y) * (ahead.y - from.y)) / (reach * span)
+      if (cos > 0.7) {
+        const speed = (2 * reach) / coast.seconds
+        const rise = Math.min(1, (speed * first.to) / (3 * span))
+        return { ...rest, boat: [straight(0, first.to, from, ahead, [1 / 3, rise, first.curve[2], first.curve[3]], false), ...others] }
+      }
+    }
+    const glide: Leg = { ...straight(0, coast.seconds, from, coast.to, COAST, false), heading: lyingOf(voyage) }
+    const stopped: Voyage = { ...voyage, coast: undefined, boat: coast.to, ...(voyage.aboard ? { clawd: coast.to } : {}) }
+    // The trip from where it stops, the boat setting out `sets` seconds in.
+    const from_ = (sets: number): Plan => (voyage.aboard ? delayed(planOf(stopped), sets, [], []) : planOf(stopped, sets))
+    // Setting out the other way, it comes most of the way about where it
+    // stopped before it gets under way.
+    const heading = from_(glide.to).boat[0]?.heading ?? glide.heading
+    const turns = heading !== glide.heading
+    const sets = glide.to + (turns ? TURN_S * 0.6 : 0)
+    const after = from_(sets)
+    return { ...after, boat: [glide, ...(turns ? [still(glide.to, sets, coast.to, heading)] : []), ...after.boat] }
+  }
   const jump = voyage.hop
   if (jump !== undefined) {
     // Begun in the air between the jetty and the boat lying at the dock: it
@@ -447,15 +498,7 @@ export function planOf(voyage: Voyage): Plan {
       return ashoreFromDeck(voyage, down)
     }
     const rest = planOf({ ...voyage, hop: undefined, boat: DOCK, clawd: jump.b, aboard: isOnBoard })
-    const later = (leg: Leg): Leg => ({ ...leg, from: leg.from + down.to, to: leg.to + down.to })
-    return {
-      boat: [moored(0, down.to, lyingOf(voyage)), ...rest.boat.map(later)],
-      clawd: [down, ...rest.clawd.map(later)],
-      boards: rest.boards + down.to,
-      lands: rest.lands + down.to,
-      gone: rest.gone + down.to,
-      settled: rest.settled + down.to,
-    }
+    return delayed(rest, down.to, [moored(0, down.to, lyingOf(voyage))], [down])
   }
   if (voyage.phase === 'fetch') {
     if (voyage.aboard) {
@@ -484,9 +527,12 @@ export function planOf(voyage: Voyage): Plan {
     // The boat comes in, by the edge it last went out by when it was out of
     // view, and lies stern to the jetty while the mascot walks out to the
     // jetty's end and hops aboard.
+    // In sight already, it sets out from a stop; with the dock just astern,
+    // it backs onto it.
     const side = otherSide(voyage.exit ?? 'R')
-    const docks = from === null ? laneSeconds(DOCK, side) : within(gap(from, DOCK) / 70, 1.5, 10)
-    const comes = from === null ? arriving(docks, DOCK, side) : straight(0, docks, from, DOCK, ARRIVE, false)
+    const isAstern = from !== null && (DOCK.x - from.x) * lyingOf(voyage) < 0 && gap(from, DOCK) < ASTERN_MAX
+    const docks = from === null ? laneSeconds(DOCK, side) : settle + within(gap(from, DOCK) / (isAstern ? ASTERN_SPEED : 50), 2.5, 10)
+    const comes = from === null ? arriving(docks, DOCK, side) : { ...straight(settle, docks, from, DOCK, EASE, false), ...(isAstern ? { heading: lyingOf(voyage) } : {}) }
     const clawd = footpath(voyage.clawd, BOARD, 0.4, 60)
     const ready = Math.max(docks + (comes.heading === -1 ? 0.1 : TURN_S + 0.1), endOf(clawd, 0) + 0.3)
     clawd.push(hop(ready, BOARD, STERN))
@@ -509,7 +555,7 @@ export function planOf(voyage: Voyage): Plan {
   if (from === null || !voyage.aboard) {
     // Nobody to land: the mascot walks home, and a boat still out goes its way.
     const clawd = footpath(voyage.clawd, HOME, 0, 40)
-    const boat = from === null ? [] : [leaving(0, from, voyage.exit ?? 'R')]
+    const boat = from === null ? [] : [leaving(settle, from, voyage.exit ?? 'R')]
     return { boat, clawd, boards: 0, lands: 0, gone: endOf(boat, 0), settled: endOf(clawd, 0) }
   }
   // The boat makes for the dock and lies there heading as it came, the
@@ -532,6 +578,49 @@ export function planOf(voyage: Voyage): Plan {
     gone: leaves + laneSeconds(DOCK, voyage.exit ?? 'R'),
     settled: endOf(clawd, lands),
   }
+}
+
+// `rest` begun `by` seconds into a trip, after the boat's `boat` and the
+// mascot's `clawd`.
+function delayed(rest: Plan, by: number, boat: Leg[], clawd: Leg[]): Plan {
+  const later = (leg: Leg): Leg => ({ ...leg, from: leg.from + by, to: leg.to + by })
+  return {
+    boat: [...boat, ...rest.boat.map(later)],
+    clawd: [...clawd, ...rest.clawd.map(later)],
+    boards: rest.boards + by,
+    lands: rest.lands + by,
+    gone: rest.gone + by,
+    settled: rest.settled + by,
+  }
+}
+
+// How the boat under way at `t` along `legs` would carry on, slowing to a
+// stop: on along its stretch, and no further than where that ends. None
+// while it lies still.
+function coastAt(legs: readonly Leg[], t: number): Coast | undefined {
+  const leg = legs.find(one => t >= one.from && t < one.to)
+  if (leg === undefined) {
+    return undefined
+  }
+  const span = leg.to - leg.from
+  const p = (t - leg.from) / span
+  const dp = Math.min(0.005, 1 - p)
+  const a = leg.at(p)
+  const speed = gap(a, leg.at(p + dp)) / (dp * span)
+  const want = speed ** 2 / (2 * COAST_DECEL)
+  let q = p
+  let to = a
+  let reach = 0
+  while (q < 1 && reach < want) {
+    q = Math.min(1, q + 0.01)
+    const next = leg.at(q)
+    reach += gap(to, next)
+    to = next
+  }
+  if (speed < 6 || reach < 2) {
+    return undefined
+  }
+  return { to, seconds: (2 * reach) / speed }
 }
 
 // Which way the boat lies, as it was facing when the trip began.
@@ -617,7 +706,7 @@ function circuitFacing(seconds: number): number {
 const JOIN: Point = circuitAt(0)
 
 // Where the two are at clock time `now` (ms), for the next trip to start from.
-export function stageAt(voyage: Voyage, now: number): { boat: Point | null; clawd: Point; aboard: boolean; facing: number | undefined; hop: Hop | undefined } {
+export function stageAt(voyage: Voyage, now: number): { boat: Point | null; clawd: Point; aboard: boolean; facing: number | undefined; hop: Hop | undefined; coast: Coast | undefined } {
   const t = (now - voyage.at) / 1000
   const plan = planOf(voyage)
   const course = (): number => facingAt(turns(plan.boat, voyage.facing), t)
@@ -625,16 +714,18 @@ export function stageAt(voyage: Voyage, now: number): { boat: Point | null; claw
     const isOnCircuit = t >= plan.settled
     const boat = isOnCircuit ? circuitAt(t - plan.settled) : along(plan.boat, t)
     const aboard = voyage.aboard || t >= plan.boards
-    return { boat, aboard, clawd: aboard ? boat : along(plan.clawd, t), facing: isOnCircuit ? circuitFacing(t - plan.settled) : course(), hop: aboard ? undefined : hopAt(plan.clawd, t) }
+    return { boat, aboard, clawd: aboard ? boat : along(plan.clawd, t), facing: isOnCircuit ? circuitFacing(t - plan.settled) : course(), hop: aboard ? undefined : hopAt(plan.clawd, t), coast: isOnCircuit ? undefined : coastAt(plan.boat, t) }
   }
   const boat = plan.boat.length > 0 && t < plan.gone ? along(plan.boat, t) : null
   const aboard = voyage.aboard && boat !== null && t < plan.lands
   const clawd = t >= plan.settled ? lifeAt(dayOf(voyage.at, voyage.drill), t - plan.settled) : along(plan.clawd, t)
-  return { boat, aboard, clawd, facing: boat === null ? undefined : course(), hop: aboard || t >= plan.settled ? undefined : hopAt(plan.clawd, t) }
+  return { boat, aboard, clawd, facing: boat === null ? undefined : course(), hop: aboard || t >= plan.settled ? undefined : hopAt(plan.clawd, t), coast: boat === null ? undefined : coastAt(plan.boat, t) }
 }
 
-// The trip that starts at `now` from wherever the last one had got to.
+// The trip that starts at `now` from wherever the last one had got to. Only a
+// trip the other way lets the boat carry on before it comes about.
 export function embark(last: Voyage, phase: Voyage['phase'], now: number, greet: boolean): Voyage {
   const exit = last.exit ?? 'R'
-  return { phase, at: now, greet, ...stageAt(last, now), exit: phase === 'fetch' ? otherSide(exit) : exit }
+  const stage = stageAt(last, now)
+  return { phase, at: now, greet, ...stage, coast: phase === last.phase ? undefined : stage.coast, exit: phase === 'fetch' ? otherSide(exit) : exit }
 }

@@ -41,7 +41,7 @@ In the desktop app: click **+** next to the prompt box, then **Plugins**, **Add 
 
 ## Commands
 
-`/maldives panel` shows or hides the **Control Panel** above the prompt. Its top row holds three menus, **Reset** (back to what Claude is really doing: its state, subagents and background shells) and **Close**; a menu opens its buttons on the rows below, and pressing it again closes them. **Appearance**: light, dark or auto. **Boats**: dinghies and fishing boats, − / + each. **Claude**: its state (idle, working or error; idle also stands for a finished turn), fireworks, what it waits on, and, while it is idle or done and Clawd is ashore, Clawd's pastime on the island. The current choice is highlighted: the scheme, Claude's state, what it waits on and Clawd's pastime.
+`/maldives panel` shows or hides the **Control Panel** above the prompt. Its top row holds four menus, **Reset** (back to what Claude is really doing: its state, subagents and background shells) and **Close**; a menu opens its buttons on the rows below, and pressing it again closes them. **Appearance**: light, dark or auto; the panel's language, English or 中文; and the panel opacity, how opaque the app's panels are over the backdrop (0% to 80%, 10% unless chosen), so their text reads more easily. The language and opacity are kept for the next session. **Boats**: dinghies and fishing boats, − / + each. **Clawd**: Claude's state as Clawd shows it (idle, working or error; idle also stands for a finished turn), fireworks, what it waits on, and, while it is idle or done and Clawd is ashore, Clawd's pastime on the island, each named for where it is spent (fishing, hammock, lounger, bar, fire pit) so it reads right by day and by night. **Wildlife**: call up one more of a passer-by, under the water (snappers, bannerfish, turtle, manta, eagle ray), at the surface (whale shark, shark, a dolphin leap, and the flying fish, which leap as when a prompt is sent and are lit until they are back in the water) or in the sky (gulls); it crosses once beside the ones already out, which carry on. While any of a kind are out its button is lit and counts them (Turtle ×2); with three out it is dimmed until one has gone by. The current choice is highlighted: the scheme, Claude's state, what it waits on and Clawd's pastime.
 
 `/maldives <what>` previews a state or changes the look. A preview only changes what the backdrop shows; Claude's next real event takes over again, or `reset` brings back what Claude is doing right away:
 
@@ -53,6 +53,7 @@ In the desktop app: click **+** next to the prompt box, then **Plugins**, **Add 
 | `fireworks` | Fireworks over the lagoon |
 | `island fish`, `nap`, `sun`, `sip`, `fire` | Send Clawd straight to that pastime on the island |
 | `island tour` | A short turn at every pastime, about two minutes in all |
+| `visit snappers`, `bannerfish`, `turtle`, `manta`, `ray`, `whaleShark`, `fin`, `dolphins`, `gulls` | Call up one more of that kind, as the Wildlife menu does |
 | `light`, `dark`, `auto` | Force a light or dark scene, or follow the app again |
 | `reset` | Drop the previews and show what Claude is really doing: its state, the subagents and background shells it has running |
 | `panel` | Show or hide the Control Panel above the prompt |

@@ -32,3 +32,19 @@ ends a turn while Clawd is still getting down from the hammock or the lounger.
 - A trip that starts while Clawd is part way down from the hammock or the
   lounger carries the getting up on from as far as it had got
   (`risingFrom`); it used to start the new trip standing, a 20 px snap.
+- A trip that starts while Clawd is in the air between the jetty and the
+  boat (`stageAt` reports the `hop` and how far into it) lets it come down
+  where it was going first (`planOf`, a rest-of-hop leg), then goes on from
+  there. Called home as it hops aboard, it lands on deck, steadies there
+  0.3 s (a standing leg, so it stays drawn in front of the sail) and hops
+  back off; on deck but not riding, it walks to the jetty end and hops
+  (`ashoreFromDeck`); the boat waits at the dock until it is ashore. It used
+  to float down or across from mid-air, behind the sail. `npm run fuzz`
+  calls each trip away every 0.05 s and fails any stretch of the mascot's
+  course that starts or ends in the air, or goes between deck and jetty,
+  without being a hop; `verify/scenarios/mid-hop.json` films each case.
+- Every time in the markup (`--t`, `--a`, `--e`, `--b`, `--c`, `--n`, a
+  delay) goes out to the millisecond (`f3`), never the tenth (`f`): a
+  track's keyframes are placed by its exact span, so a duration rounded to
+  a tenth stretched it, and Clawd near the end of a hop was 7 px off from
+  where the next drawing put it.

@@ -23,10 +23,17 @@ declare module 'claude-code' {
       // The light/dark scheme in force, as the store keeps it; whether the
       // control panel above the prompt is shown, and which of its menus is open.
       scheme: 'light' | 'dark' | 'auto'
+      // How opaque the app's panels are over the backdrop (0 to 1), and the
+      // control panel's language, as the store keeps them.
+      glass: number
+      lang: 'en' | 'zh'
       controls: boolean
-      menu: 'none' | 'appearance' | 'boats' | 'claude'
+      menu: 'none' | 'appearance' | 'boats' | 'claude' | 'wildlife'
+      // Swimmers, gulls and dolphins called up by hand: when (clock ms), and
+      // which place beside its lane each keeps while it is out.
+      visits: { kind: 'snappers' | 'bannerfish' | 'turtle' | 'manta' | 'ray' | 'whaleShark' | 'fin' | 'dolphins' | 'gulls'; at: number; slot: number }[]
       // The lead boat's trip with the mascot, from the moment it began.
-      voyage: { phase: 'fetch' | 'land'; at: number; boat: Point | null; clawd: Point; aboard: boolean; greet: boolean; drill?: 'fish' | 'nap' | 'sun' | 'sip' | 'fire' | 'tour'; exit?: 'L' | 'R'; facing?: number }
+      voyage: { phase: 'fetch' | 'land'; at: number; boat: Point | null; clawd: Point; aboard: boolean; greet: boolean; drill?: 'fish' | 'nap' | 'sun' | 'sip' | 'fire' | 'tour'; exit?: 'L' | 'R'; facing?: number; hop?: { a: Point; b: Point; p: number } }
       // The other boats on the water, with the times each set out and was
       // called home.
       boats: { kind: 'lead' | 'crew' | 'shell'; slot: number; from: 'L' | 'R'; pass: 'over' | 'under'; born: number; gone: number | undefined }[]

@@ -14,8 +14,10 @@ import { join } from 'path'
 import type { Mood, Need } from '../../types'
 import { berthAt, muster } from '../../hooks/fleet'
 import type { Boat } from '../../hooks/fleet'
-import { FIREWORKS_MS, UNFLAGGED, UNPAINTED, hoist, paint, signalOf } from '../../hooks/paint'
-import type { Flag, Painted } from '../../hooks/paint'
+import { FIREWORKS_MS, UNFLAGGED, UNPAINTED, callUp, hoist, paint, signalOf } from '../../hooks/paint'
+import type { Call, Flag, Painted } from '../../hooks/paint'
+import { VISIT_SECONDS } from '../../hooks/scene'
+import type { VisitKind } from '../../hooks/scene'
 import { AT_HOME, DRILLS, embark } from '../../hooks/voyage'
 import type { Voyage } from '../../hooks/voyage'
 
@@ -50,6 +52,7 @@ type World = {
   // The module's own variables: they start over when it reloads.
   leapUntil: number
   flag: Flag
+  visits: Call[]
   drawn: Painted
 }
 
@@ -72,6 +75,7 @@ function play(scenario: Scenario, out: string): void {
     scheme: scenario.scheme,
     leapUntil: 0,
     flag: UNFLAGGED,
+    visits: [],
     drawn: UNPAINTED,
   }
   const redraws: Redraw[] = []
@@ -130,6 +134,7 @@ function play(scenario: Scenario, out: string): void {
         boats: world.boats,
         leapUntil: world.leapUntil,
         flag: world.flag,
+        visits: world.visits,
       },
       now,
     )
@@ -202,6 +207,12 @@ function play(scenario: Scenario, out: string): void {
       if (drill !== undefined && world.mood !== 'working' && world.mood !== 'waiting') {
         world.voyage = { ...embark(world.voyage, 'land', now, false), drill }
       }
+    } else if (word === 'visit') {
+      const kind = (Object.keys(VISIT_SECONDS) as VisitKind[]).find(one => one === amount)
+      if (kind === undefined) {
+        throw new Error(`unknown kind "${amount}" at ${seconds}s`)
+      }
+      world.visits = callUp(world.visits, kind, now) ?? world.visits
     } else if (word === 'shells' || word === 'crew') {
       const next = count ?? ((word === 'shells' ? world.shells : world.crew) + 1) % 4
       world[word === 'shells' ? 'shells' : 'crew'] = next
@@ -242,7 +253,7 @@ function randomScenario(seed: number): Scenario {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
   const pick = <T,>(items: readonly T[]): T => items[Math.floor(rand() * items.length)] as T
-  const vocabulary = ['turn', 'turn', 'answer', 'answer', 'abort', 'fail', 'prompt', 'permission', 'question', 'plan', 'resolve', 'resolve', 'subagent', 'subagent-done', 'shell', 'shell-done', 'compact', 'compacted', 'ship', 'ask', 'ask', 'reload', '/maldives island tour', '/maldives island nap', '/maldives island sun', '/maldives dark', '/maldives light', '/maldives crew 2', '/maldives shells 1', '/maldives crew 4', '/maldives reset']
+  const vocabulary = ['turn', 'turn', 'answer', 'answer', 'abort', 'fail', 'prompt', 'permission', 'question', 'plan', 'resolve', 'resolve', 'subagent', 'subagent-done', 'shell', 'shell-done', 'compact', 'compacted', 'ship', 'ask', 'ask', 'reload', '/maldives island tour', '/maldives island nap', '/maldives island sun', '/maldives dark', '/maldives light', '/maldives crew 2', '/maldives shells 1', '/maldives crew 4', '/maldives reset', ...Object.keys(VISIT_SECONDS).map(kind => `/maldives visit ${kind}`)]
   const events: [number, string][] = []
   let t = 1 + rand() * 4
   while (t < 85) {

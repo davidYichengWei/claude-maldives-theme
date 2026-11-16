@@ -6,7 +6,10 @@ import { berthAt, muster } from './fleet'
 import type { Boat } from './fleet'
 import { makeColors } from './make-colors.js'
 import { FIREWORKS_MS, KEY_PARTS, UNFLAGGED, UNPAINTED, hoist, paint, signalOf } from './paint'
-import type { Flag } from './paint'
+import type { Call, Flag } from './paint'
+import { MOST_CALLED, callUp, stillOut } from './paint'
+import { VISIT_SECONDS } from './scene'
+import type { VisitKind } from './scene'
 import { AT_HOME, DRILLS, embark, planOf } from './voyage'
 import type { Drill, Voyage } from './voyage'
 
@@ -53,6 +56,10 @@ const LOOK: ThemeSetArgs = {
   colors: theme,
   backdrop: { scene: 'maldives', glass: { blur: 0, opacity: 0.1 } },
 }
+// How opaque the app's panels may be over the backdrop, so their text reads
+// more easily, from none to most; a tenth unless chosen.
+const GLASSES: readonly number[] = [0, 0.1, 0.25, 0.4, 0.6, 0.8]
+const GLASS = 0.1
 
 const mood = atom({ plugin: 'maldives', key: 'mood' } as const, 'idle' as Mood)
 const need = atom({ plugin: 'maldives', key: 'need' } as const, 'permission' as Need)
@@ -68,6 +75,15 @@ const leap = atom({ plugin: 'maldives', key: 'leap' } as const, 0)
 // everything where it was.
 const voyage = atom({ plugin: 'maldives', key: 'voyage' } as const, AT_HOME as Voyage)
 const boats = atom({ plugin: 'maldives', key: 'boats' } as const, [] as Boat[])
+// Swimmers, gulls and dolphins called up by hand, while they are out.
+const visits = atom({ plugin: 'maldives', key: 'visits' } as const, [] as Call[])
+// What can be called, by where it shows, with its button's label.
+const WILDLIFE: readonly { where: string; kinds: readonly [VisitKind, string][] }[] = [
+  { where: 'Under water', kinds: [['snappers', 'Snappers'], ['bannerfish', 'Bannerfish'], ['turtle', 'Turtle'], ['manta', 'Manta'], ['ray', 'Eagle ray']] },
+  { where: 'On the surface', kinds: [['whaleShark', 'Whale shark'], ['fin', 'Shark'], ['dolphins', 'Dolphins']] },
+  { where: 'In the sky', kinds: [['gulls', 'Gulls']] },
+]
+const KINDS = WILDLIFE.flatMap(group => group.kinds.map(([kind]) => kind))
 
 // Flying fish leap in a scene drawn within this long of a prompt being sent.
 const LEAP_MS = 5000
@@ -82,13 +98,36 @@ const SCHEMES: readonly Scheme[] = ['light', 'dark', 'auto']
 const shownScheme = atom({ plugin: 'maldives', key: 'scheme' } as const, 'auto' as Scheme)
 // The control panel above the prompt: whether it is shown, and which of its
 // menus is open below its top row (none for the top row alone).
-type Menu = 'appearance' | 'boats' | 'claude'
+type Menu = 'appearance' | 'boats' | 'claude' | 'wildlife'
 const MENUS: readonly { menu: Menu; label: string }[] = [
   { menu: 'appearance', label: 'Appearance' },
   { menu: 'boats', label: 'Boats' },
-  { menu: 'claude', label: 'Claude' },
+  { menu: 'claude', label: 'Clawd' },
+  { menu: 'wildlife', label: 'Wildlife' },
 ]
 const controls = atom({ plugin: 'maldives', key: 'controls' } as const, false)
+// The panels' opacity and the panel's language in force, kept from the store.
+const shownGlass = atom({ plugin: 'maldives', key: 'glass' } as const, GLASS)
+type Lang = 'en' | 'zh'
+const LANGS: readonly [Lang, string][] = [['en', 'English'], ['zh', '中文']]
+const shownLang = atom({ plugin: 'maldives', key: 'lang' } as const, 'en' as Lang)
+// The panel's words in Chinese, by their English.
+const ZH: Readonly<Record<string, string>> = {
+  'Control Panel': '控制面板', Appearance: '外观', Boats: '船只', Clawd: 'Clawd', Wildlife: '野生动物', Reset: '重置', Close: '关闭',
+  Scheme: '配色', Light: '浅色', Dark: '深色', Auto: '自动', Language: '语言', 'Panel opacity': '面板不透明度',
+  Dinghies: '小艇', 'Fishing boats': '渔船',
+  State: '状态', Idle: '空闲', Working: '工作中', Error: '出错', Fireworks: '烟花',
+  'Waiting on': '等待', Permission: '权限', Question: '提问', Plan: '计划',
+  'On the island': '岛上活动', Fishing: '钓鱼', Hammock: '吊床', Lounger: '躺椅', Bar: '吧台', 'Fire pit': '火堆', Tour: '都玩一遍',
+  'Under water': '水下', 'On the surface': '水面', 'In the sky': '天空',
+  'Flying fish': '飞鱼', Snappers: '笛鲷群', Bannerfish: '马夫鱼群', Turtle: '海龟', Manta: '蝠鲼', 'Eagle ray': '鹞鲼', 'Whale shark': '鲸鲨', Shark: '鲨鱼', Dolphins: '海豚', Gulls: '海鸥',
+}
+// Each pastime's button, named for where Clawd spends it rather than how
+// (a nap, sunbathing), so it reads right by day and by night alike: the
+// panel cannot tell which the backdrop shows while it follows the app.
+const PASTIME_LABEL: Readonly<Record<Drill, string>> = { fish: 'Fishing', nap: 'Hammock', sun: 'Lounger', sip: 'Bar', fire: 'Fire pit', tour: 'Tour' }
+// `english` in the panel's language.
+const words = (lang: Lang) => (english: string): string => (lang === 'zh' ? ZH[english] ?? english : english)
 const menu = atom({ plugin: 'maldives', key: 'menu' } as const, 'none' as Menu | 'none')
 
 const title = (word: string): string => word.charAt(0).toUpperCase() + word.slice(1)
@@ -97,7 +136,11 @@ async function applyLook($: EngineInterface): Promise<void> {
   const stored = await $.store.get('scheme')
   const scheme = SCHEMES.find(s => s === stored) ?? 'auto'
   await update($, shownScheme, () => scheme)
-  const look: ThemeSetArgs = scheme === 'auto' ? LOOK : { ...LOOK, overrideColorScheme: scheme }
+  const keptGlass = await $.store.get('glass')
+  const glass = GLASSES.find(g => g === keptGlass) ?? GLASS
+  await update($, shownGlass, () => glass)
+  const lit: ThemeSetArgs = { ...LOOK, backdrop: { scene: 'maldives', glass: { blur: 0, opacity: glass } } }
+  const look: ThemeSetArgs = scheme === 'auto' ? lit : { ...lit, overrideColorScheme: scheme }
   const set = await $.theme.set(look)
   if (!set.isDrawn) {
     $.ui.log(`theme not drawn yet: ${set.reason}`)
@@ -195,6 +238,16 @@ async function forceScheme($: EngineInterface, scheme: Scheme): Promise<string> 
   return scheme === 'auto' ? 'Following the app appearance again.' : `Forced ${scheme} mode.`
 }
 
+async function setGlass($: EngineInterface, glass: number): Promise<void> {
+  await $.store.set('glass', glass)
+  await applyLook($)
+}
+
+async function setLang($: EngineInterface, lang: Lang): Promise<void> {
+  await $.store.set('lang', lang)
+  await update($, shownLang, () => lang)
+}
+
 async function sendOut($: EngineInterface, kind: 'crew' | 'shells', wanted: number): Promise<string> {
   const total = Math.max(0, Math.min(MOST_BOATS, wanted))
   if (kind === 'crew') await update($, crew, () => total)
@@ -221,6 +274,37 @@ async function preview($: EngineInterface, state: Mood | Need): Promise<string> 
   }
   await setMood($, state as Mood)
   return `Backdrop state: ${state}`
+}
+
+async function call($: EngineInterface, kind: VisitKind): Promise<string> {
+  const now = await $.clock.now()
+  const calls = callUp(await read($, visits), kind, now)
+  if (calls === undefined) {
+    return `Already ${MOST_CALLED} ${kind} out; one more once one has gone by.`
+  }
+  await update($, visits, () => calls)
+  // Gone by: dropped, so the button counts it no more.
+  $.clock.after(VISIT_SECONDS[kind] * 1000 + 500, async () => {
+    const later = await $.clock.now()
+    await update($, visits, list => stillOut(list, later))
+  })
+  return `Called up: ${kind}`
+}
+
+// The flying fish leap, as they do when a prompt is sent. One leap at a time:
+// a press while they are in the air would draw them anew from their start.
+async function leapNow($: EngineInterface): Promise<string> {
+  const now = await $.clock.now()
+  if (now < leapUntil) {
+    return 'The flying fish are still in the air.'
+  }
+  leapUntil = now + LEAP_MS
+  await update($, leap, n => n + 1)
+  // Back in the water: the panel's button goes out.
+  $.clock.after(LEAP_MS + 100, async () => {
+    await update($, leap, n => n + 1)
+  })
+  return 'Flying fish leaping.'
 }
 
 async function goLive($: EngineInterface): Promise<string> {
@@ -268,11 +352,13 @@ export const register: Register = on => {
       $.ui.toast(unpainted)
     }
     await applyLook($)
+    const keptLang = await $.store.get('lang')
+    await update($, shownLang, () => LANGS.find(([one]) => one === keptLang)?.[0] ?? 'en')
     $.ui.status(undefined)
     await $.command.register({
       name: 'maldives',
       description:
-        'Show or hide the Control Panel above the prompt with panel, preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), go back to what Claude is really doing with reset, set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, or print what the backdrop is showing with debug',
+        'Show or hide the Control Panel above the prompt with panel, call up a swimmer, gulls or a dolphin leap with visit <kind>, preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), go back to what Claude is really doing with reset, set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, or print what the backdrop is showing with debug',
     })
     return next(e)
   })
@@ -316,6 +402,10 @@ export const register: Register = on => {
       }
       return { text: await goAshore($, drill) }
     }
+    if (word === 'visit') {
+      const kind = KINDS.find(one => one === amount)
+      return { text: kind === undefined ? `Usage: /maldives visit ${KINDS.join(' | ')}` : await call($, kind) }
+    }
     if (word === 'shells' || word === 'crew') {
       const out = word === 'crew' ? await read($, crew) : await read($, shells)
       return { text: await sendOut($, word, asked ?? (out + 1) % 4) }
@@ -326,7 +416,7 @@ export const register: Register = on => {
     }
     const pick = [...MOODS, ...NEEDS].find(m => m === arg)
     if (pick === undefined) {
-      return { text: `Usage: /maldives ${['panel', ...MOODS, ...NEEDS, 'reset', 'crew [0-5]', 'shells [0-5]', 'fireworks', `island ${DRILLS.join('|')}`, ...SCHEMES].join(' | ')}` }
+      return { text: `Usage: /maldives ${['panel', ...MOODS, ...NEEDS, 'reset', 'crew [0-5]', 'shells [0-5]', 'fireworks', `island ${DRILLS.join('|')}`, `visit ${KINDS.join('|')}`, ...SCHEMES].join(' | ')}` }
     }
     return { text: await preview($, pick) }
   })
@@ -340,6 +430,7 @@ export const register: Register = on => {
     }
     const { Box, Button, Text } = $.ui.resolve(e)
     const open = await read($, menu)
+    const w = words(await read($, shownLang))
     // What a button does shows on the backdrop and in which button is lit, so
     // the words an action returns for `/maldives` are not shown here.
     const act = (run: () => Promise<unknown>) => async (): Promise<void> => {
@@ -356,15 +447,39 @@ export const register: Register = on => {
     const line = (heading: string, buttons: RenderChildren[], isBold = false) => (
       <Box flexDirection="row" gap={1} rowGap={2} flexWrap="wrap" alignItems="center">
         <Box width={HEADING}>
-          <Text bold={isBold} dimColor={!isBold}>{heading}</Text>
+          <Text bold={isBold} dimColor={!isBold}>{w(heading)}</Text>
         </Box>
         {buttons}
       </Box>
     )
     const rows: RenderChildren[] = []
-    if (open === 'appearance') {
+    if (open === 'wildlife') {
+      // A kind with any out is lit and counts them, so a press shows at once;
+      // with as many out as it may have it is dim until one has gone by.
+      const now = await $.clock.now()
+      const out = stillOut(await read($, visits), now)
+      await read($, leap)
+      const isLeaping = now < leapUntil
+      for (const group of WILDLIFE) {
+        rows.push(
+          line(
+            group.where,
+            group.kinds.map(([kind, label]) => {
+              const n = out.filter(v => v.kind === kind).length
+              return <Button key={`call-${kind}`} label={n === 0 ? w(label) : `${w(label)} ×${n}`} variant={n > 0 ? 'primary' : 'secondary'} dimColor={n >= MOST_CALLED} onPress={act(() => call($, kind))} />
+            }).concat(group.where === 'On the surface' ? [pick('call-flyingFish', w('Flying fish'), isLeaping, () => leapNow($))] : []),
+          ),
+        )
+      }
+    } else if (open === 'appearance') {
       const scheme = await read($, shownScheme)
-      rows.push(line('Scheme', SCHEMES.map(one => pick(`scheme-${one}`, title(one), one === scheme, () => forceScheme($, one)))))
+      const glass = await read($, shownGlass)
+      const lang = await read($, shownLang)
+      rows.push(
+        line('Scheme', SCHEMES.map(one => pick(`scheme-${one}`, w(title(one)), one === scheme, () => forceScheme($, one)))),
+        line('Language', LANGS.map(([one, name]) => pick(`lang-${one}`, name, one === lang, () => setLang($, one)))),
+        line('Panel opacity', GLASSES.map(one => pick(`glass-${Math.round(one * 100)}`, `${Math.round(one * 100)}%`, one === glass, () => setGlass($, one)))),
+      )
     } else if (open === 'boats') {
       const counts = { crew: await read($, crew), shells: await read($, shells) }
       const stepper = (heading: string, which: 'crew' | 'shells') =>
@@ -381,14 +496,14 @@ export const register: Register = on => {
         line('State', [
           // Done differs from idle only in the wave Clawd gives as it lands, so
           // one button stands for both.
-          ...(['idle', 'working', 'error'] as const).map(m => pick(`mood-${m}`, title(m), m === current || (m === 'idle' && current === 'done'), () => preview($, m))),
-          pick('fireworks', 'Fireworks', false, () => celebrate($)),
+          ...(['idle', 'working', 'error'] as const).map(m => pick(`mood-${m}`, w(title(m)), m === current || (m === 'idle' && current === 'done'), () => preview($, m))),
+          pick('fireworks', w('Fireworks'), false, () => celebrate($)),
         ]),
-        line('Waiting on', NEEDS.map(n => pick(`need-${n}`, title(n), current === 'waiting' && n === kind, () => preview($, n)))),
+        line('Waiting on', NEEDS.map(n => pick(`need-${n}`, w(title(n)), current === 'waiting' && n === kind, () => preview($, n)))),
       )
       if (current === 'idle' || current === 'done') {
         const doing = (await read($, voyage)).drill
-        rows.push(line('On the island', DRILLS.map(d => pick(`drill-${d}`, title(d), d === doing, () => goAshore($, d)))))
+        rows.push(line('On the island', DRILLS.map(d => pick(`drill-${d}`, w(PASTIME_LABEL[d]), d === doing, () => goAshore($, d)))))
       }
     }
     return (
@@ -397,16 +512,16 @@ export const register: Register = on => {
           'Control Panel',
           [
             ...MENUS.map(one => (
-              <Button key={`menu-${one.menu}`} label={one.label} variant={one.menu === open ? 'primary' : 'secondary'} onPress={() => update($, menu, was => (was === one.menu ? 'none' : one.menu))} />
+              <Button key={`menu-${one.menu}`} label={w(one.label)} variant={one.menu === open ? 'primary' : 'secondary'} onPress={() => update($, menu, was => (was === one.menu ? 'none' : one.menu))} />
             )),
             // Reset puts the panel back to its top row as well.
-            <Button key="reset" label="Reset" onPress={act(async () => {
+            <Button key="reset" label={w('Reset')} onPress={act(async () => {
               await goLive($)
               await update($, menu, () => 'none')
             })} />,
             <Box flexGrow={1} />,
-            <Button key="close" label="Close" role="dismiss" onPress={() => update($, controls, () => false)}>
-              <Text color={CLOSE_TINT}>Close</Text>
+            <Button key="close" label={w('Close')} role="dismiss" onPress={() => update($, controls, () => false)}>
+              <Text color={CLOSE_TINT}>{w('Close')}</Text>
             </Button>,
           ],
           true,
@@ -533,6 +648,7 @@ export const register: Register = on => {
         boats: await read($, boats),
         leapUntil,
         flag,
+        visits: await read($, visits),
       },
       now,
     )

@@ -51,6 +51,9 @@ function f3(n: number): string {
   return String(Math.round(n * 1000) / 1000)
 }
 
+// Times (a delay, a duration, where in its course a thing is) go through f3,
+// never f: two drawings a redraw apart each round on their own, and a tenth
+// of a second is a jump wherever anything moves fast.
 function f(n: number): string {
   return String(Math.round(n * 10) / 10)
 }
@@ -134,6 +137,32 @@ const LANES: Record<'manta' | 'shoalA' | 'ray' | 'turtle' | 'shoalB', Lane> = {
   ray: { gate: 'gRa', dir: 'L', y: 786, cycle: 168, phase: 130 },
   turtle: { gate: 'gTu', dir: 'R', y: 812, cycle: 240, phase: 170 },
   shoalB: { gate: 'gSb', dir: 'L', y: 850, cycle: 140, phase: 96 },
+}
+
+// Swimmers, gulls and dolphins called up by hand: each comes once, beside the
+// ones on their own rounds, which go on as they were. A crosser keeps to its
+// kind's lane, a little off it so two do not lie on one another; a dolphin
+// call is one leap of a pod of its own. How long each is out for, from the
+// moment it was called.
+export type VisitKind = 'snappers' | 'bannerfish' | 'turtle' | 'manta' | 'ray' | 'whaleShark' | 'fin' | 'dolphins' | 'gulls'
+// `slot` is which of the places beside the lane it keeps, fixed when it is
+// called, so one going by never moves the others.
+export type Visit = { kind: VisitKind; age: number; slot: number }
+const WHALE_CYCLE = 560
+const FIN_CYCLE = 270
+const GULL_CYCLE = 58
+// A called dolphin leaps this many seconds after the call.
+const LEAP_LEAD = 0.3
+export const VISIT_SECONDS: Readonly<Record<VisitKind, number>> = {
+  snappers: LANES.shoalA.cycle * SWIM,
+  bannerfish: LANES.shoalB.cycle * SWIM,
+  turtle: LANES.turtle.cycle * SWIM,
+  manta: LANES.manta.cycle * SWIM,
+  ray: LANES.ray.cycle * SWIM,
+  whaleShark: WHALE_CYCLE * SWIM,
+  fin: FIN_CYCLE * SWIM,
+  gulls: GULL_CYCLE,
+  dolphins: ((100 - LEAP_FROM) / 100) * LEAP_EVERY,
 }
 
 // For each lane, the crossings (counted from the start of the round on its own
@@ -1040,12 +1069,12 @@ function vessel(boat: Boat, seconds: number, flag: Flag, tolerance: number): { s
     const way = times.map(t => ({ p: t / span, ...placeAt(t) }))
     const end = placeAt(span)
     const heading = boat.from === 'L' ? 1 : -1
-    const a = f(seconds - gone / 1000)
+    const a = f3(seconds - gone / 1000)
     // It comes about from however far round its circuit had turned it: the
     // turn is joined where its side view is as wide, and faces as, it was.
     const lap = ((((gone - boat.born) / 1000 + lapStart(boat)) / route.seconds) % 1 + 1) % 1
     const facing = facingAt(LAP_FACING, lap) * heading
-    const into = `style="--a:${f(seconds - gone / 1000 + (facing + 1) / 2)}"`
+    const into = `style="--a:${f3(seconds - gone / 1000 + (facing + 1) / 2)}"`
     const turned = facing > 0.999 ? hull : `<g class="turn" ${into}>${hull}</g>${bowOf(boat, 1, `class="turnb" ${into}`)}`
     // Out to sea it heads for the horizon on a straight line that the eye
     // foreshortens, so its sideways travel keeps step with its lane's.
@@ -1084,14 +1113,14 @@ function vessel(boat: Boat, seconds: number, flag: Flag, tolerance: number): { s
   const size = roaming ? 1 : route.scale
   const boat0 = `<g class="bf">${size === 1 ? '' : `<g transform="scale(${size})">`}<g class="boat">${hullOf(boat, flag, fading)}</g>${size === 1 ? '' : '</g>'}</g>${bowOf(boat, size, 'class="bw"')}`
   const grown = sized === '' ? boat0 : `<g class="way" style="animation-name:${name}is">${boat0}</g>`
-  const drift = roaming ? `;--v:${route.drift}s;--c:${f(age + lapStart(boat) + route.driftFrom * (route.drift ?? 0))};--z0:${sizesOf(boat)[0]};--z1:${sizesOf(boat)[1]}` : ''
-  const lap = `<g style="--u:${route.seconds}s;--b:${f(age + lapStart(boat))};--r:${route.rx}px;--q:${route.ry}px;${bob}${drift}" transform="translate(${route.cx} ${route.cy})">
-<g class="bx">${roaming ? roamed(boat, f(age + lapStart(boat)), grown) : `<g class="by">${grown}</g>`}</g></g>`
+  const drift = roaming ? `;--v:${route.drift}s;--c:${f3(age + lapStart(boat) + route.driftFrom * (route.drift ?? 0))};--z0:${sizesOf(boat)[0]};--z1:${sizesOf(boat)[1]}` : ''
+  const lap = `<g style="--u:${route.seconds}s;--b:${f3(age + lapStart(boat))};--r:${route.rx}px;--q:${route.ry}px;${bob}${drift}" transform="translate(${route.cx} ${route.cy})">
+<g class="bx">${roaming ? roamed(boat, f3(age + lapStart(boat)), grown) : `<g class="by">${grown}</g>`}</g></g>`
   if (!isComing) {
     return { svg: lap, css: '' }
   }
   const edge = fixAt(boat, 0)
-  const a = `--e:${span}s;--a:${f(age)}`
+  const a = `--e:${span}s;--a:${f3(age)}`
   return {
     css: (route.isFar ? '' : glide(`${name}ix`, edge.x - join.x, 0, ENTER_X)) + keyframes(`${name}in`, apart) + sized,
     svg: route.isFar
@@ -1112,7 +1141,7 @@ function roamed(boat: Boat, sweep: string, inner: string): string {
   }
   const [left, right] = acrossOf(boat)
   const [far, near] = sizesOf(boat)
-  return `<g class="bv"><g class="bv" style="--v:${r.seconds}s;--c:${sweep};--q:${-r.tilt}px;--z0:${left};--z1:${right}"><g class="bz"><g class="bz" style="--v:${r.drift}s;--c:${f(Number(sweep) + r.driftFrom * (r.drift ?? 0))};--z0:${far};--z1:${near}">${inner}</g></g></g></g>`
+  return `<g class="bv"><g class="bv" style="--v:${r.seconds}s;--c:${sweep};--q:${-r.tilt}px;--z0:${left};--z1:${right}"><g class="bz"><g class="bz" style="--v:${r.drift}s;--c:${f3(Number(sweep) + r.driftFrom * (r.drift ?? 0))};--z0:${far};--z1:${near}">${inner}</g></g></g></g>`
 }
 
 // What tells a boat apart from every other that is or was out.
@@ -1382,7 +1411,7 @@ function stack(parts: readonly Part[], prefix: string): { parts: Part[]; css: st
     })
   })
   if (css !== '') {
-    css += `.${prefix}{--e:${f(Math.max(0.1, horizon))}s;--a:0}`
+    css += `.${prefix}{--e:${f3(Math.max(0.1, horizon))}s;--a:0}`
   }
   const out: Part[] = []
   buckets.forEach((bucket, k) => {
@@ -1485,12 +1514,71 @@ function swimmer(dir: 'R' | 'L', y: number, seconds: number, phase: number, squa
   return `<g class="sw${dir}" style="animation-duration:${seconds}s;--d:${phase}"><g transform="translate(0 ${y})">${path}</g></g>`
 }
 
+// An animation that runs once from `age` seconds in, held at its ends.
+function onceFrom(cycle: number, age: number): string {
+  return `animation-duration:${cycle}s;animation-delay:${f3(-age)}s;animation-iteration-count:1;animation-fill-mode:both`
+}
+
+// One crossing of a called swimmer, its body cloned from its kind's own.
+function crossing(dir: 'R' | 'L', y: number, cycle: number, squash: number, body: string, dip: number, age: number): string {
+  const flip = dir === 'L' ? ' scale(-1 1)' : ''
+  const inner = `<g class="wander"><g transform="scale(1 ${squash})${flip}"><use href="#${body}"/></g></g>`
+  const path = dip === 0 ? inner : `<g class="dip${dir}" style="--dip:${dip}px;${onceFrom(cycle, age)}">${inner}</g>`
+  return `<g class="sw${dir}" style="${onceFrom(cycle, age)}"><g transform="translate(0 ${f(y)})">${path}</g></g>`
+}
+
+// How far off its lane a called one in slot k keeps: each slot a step
+// further the same way, so calls made together still read as several. Under
+// the water that is up, away from the bottom; at the surface it is nearer.
+function offLane(k: number, step: number): number {
+  return step * (k + 1)
+}
+
+// Something drawn at a depth (its lane's y): nearer, lower on the view, is
+// painted later.
+type Layer = [number, string]
+function byDepth(layers: readonly Layer[]): string {
+  return [...layers].sort((a, b) => a[0] - b[0]).map(([, markup]) => markup).join('')
+}
+
+// The called ones of `kind` on a lane at `y`, each drawn by `one(age, y)` at
+// its own place beside the lane.
+function called(visits: readonly Visit[], kind: VisitKind, y: number, step: number, one: (age: number, y: number) => string): Layer[] {
+  return visits.filter(v => v.kind === kind).map(v => {
+    const at = y + offLane(v.slot, step)
+    return [at, one(v.age, at)]
+  })
+}
+
+// A called leap of a pod of two, at one of a few spots clear of the pods on
+// their rounds, its clock set so the leap starts LEAP_LEAD after the call.
+const CALLED_PODS: readonly [number, number, number][] = [[820, HORIZON + 58, 1.15], [520, HORIZON + 84, 1.35], [1060, HORIZON + 52, 1.05]]
+function calledPod(spot: number, age: number, seconds: number): string {
+  const [x, y, s] = CALLED_PODS[spot % CALLED_PODS.length] ?? [820, HORIZON + 58, 1.15]
+  const phase = f3((LEAP_FROM / 100) * LEAP_EVERY - LEAP_LEAD + age - Number(f3(seconds % 100000)))
+  const behind = f3(Number(phase) - 0.7)
+  return `<g transform="translate(${x} ${y}) scale(${s})">
+<g clip-path="url(#surf)">${leaper(0, LEAP_SIZE, Number(phase), ONCE)}${leaper(-44, 0.42, Number(behind), ONCE)}</g>
+${splashes(0, LEAP_SIZE, Number(phase), ONCE)}${splashes(-44, 0.42, Number(behind), ONCE)}</g>`
+}
+
+// The pods on their rounds and the called ones, each at its depth.
+function pods(visits: readonly Visit[], seconds: number): Layer[] {
+  const rounds: Layer[] = [[HORIZON + 46, pod(640, HORIZON + 46, 1, 0, 0)], [HORIZON + 68, pod(960, HORIZON + 68, 1.25, 20, 1)], [HORIZON + 96, pod(700, HORIZON + 96, 1.5, 37, 2)]]
+  const called = visits.filter(v => v.kind === 'dolphins').map((v): Layer => [CALLED_PODS[v.slot % CALLED_PODS.length]?.[1] ?? 0, calledPod(v.slot, v.age, seconds)])
+  return [...rounds, ...called]
+}
+
 function visitor(lane: Lane, squash: number, body: string, dip = 0): string {
   return `<g class="${lane.gate}" style="--d:${lane.phase}">${swimmer(lane.dir, lane.y, lane.cycle, lane.phase, squash, body, dip)}</g>`
 }
 
-function leaper(x: number, s: number, phase: number): string {
-  return `<g transform="translate(${x} 0)" style="--d:${phase}"><g class="lpX"><g class="lpY"><g class="lpR"><use href="#dl" transform="scale(${s})"/></g></g></g></g>`
+// `ONCE` on a called leap's animated parts: one leap, held under the water
+// after it, where a drawing kept on after the call is over leaves it.
+const ONCE = ' style="animation-iteration-count:1;animation-fill-mode:both"'
+
+function leaper(x: number, s: number, phase: number, once = ''): string {
+  return `<g transform="translate(${x} 0)" style="--d:${phase}"><g class="lpX"${once}><g class="lpY"${once}><g class="lpR"${once}><use href="#dl" transform="scale(${s})"/></g></g></g></g>`
 }
 
 // Two dolphins leaping together at one spot. A leap comes round every
@@ -1498,8 +1586,8 @@ function leaper(x: number, s: number, phase: number): string {
 // different one from the others, so where and when the next leap comes varies.
 // A dolphin's splashes, where it leaves the water and where it goes back in:
 // spray thrown up and a ring of foam spreading out.
-function splashes(x: number, s: number, phase: number): string {
-  const at = (hole: number, when: 'O' | 'I'): string => `<g transform="translate(${hole} 0) scale(${f3(s / LEAP_SIZE)})"><g class="rg${when}"><use href="#drg"/></g><g class="sp${when}"><use href="#dsp"/></g></g>`
+function splashes(x: number, s: number, phase: number, once = ''): string {
+  const at = (hole: number, when: 'O' | 'I'): string => `<g transform="translate(${hole} 0) scale(${f3(s / LEAP_SIZE)})"><g class="rg${when}"${once}><use href="#drg"/></g><g class="sp${when}"${once}><use href="#dsp"/></g></g>`
   return `<g class="spl" style="--d:${phase}">${at(x, 'O')}${at(x + LEAP_REACH, 'I')}</g>`
 }
 
@@ -1515,17 +1603,31 @@ ${splashes(0, LEAP_SIZE, phase)}${splashes(-44, 0.42, phase - 0.7)}</g></g>`
 // all pass over them. A swimmer is drawn opaque in colours already mixed with
 // the water around it, so it hides what it passes over instead of letting it
 // show through as a group opacity would.
-function seaLife(hasLife: boolean): string {
+// Each kind's body has an id, which a called one of the kind clones.
+function seaLife(hasLife: boolean, visits: readonly Visit[], seconds: number): string {
+  // A lane's swimmer on its rounds, then its called ones.
+  const lane = (kind: VisitKind, one: Lane, squash: number, body: string, id: string, dip = 0, step = -34): Layer[] => [
+    [one.y, visitor(one, squash, body, dip)],
+    ...called(visits, kind, one.y, step, (age, y) => crossing(one.dir, y, one.cycle, squash, id, dip, age)),
+  ]
+  const surface: Layer[] = [
+    [HORIZON + 28, swimmer('R', HORIZON + 28, WHALE_CYCLE, 300, 1, `<g id="bWs" transform="scale(.37)">${WHALE_SHARK}</g>`)],
+    ...called(visits, 'whaleShark', HORIZON + 28, 12, (age, y) => crossing('R', y, WHALE_CYCLE, 1, 'bWs', 0, age)),
+    ...pods(visits, seconds),
+    [FIN_LANE, swimmer('L', FIN_LANE, FIN_CYCLE, 150, 1, `<g id="bFn">${FIN}</g>`)],
+    ...called(visits, 'fin', FIN_LANE, 16, (age, y) => crossing('L', y, FIN_CYCLE, 1, 'bFn', 0, age)),
+  ]
+  const under: Layer[] = [
+    ...lane('manta', LANES.manta, 0.7, `<g id="bMa" transform="scale(0.9)">${MANTA}</g>`, 'bMa', 128, -30),
+    ...lane('snappers', LANES.shoalA, 0.85, `<g id="bSa">${school('shA', 9, 21, 'sr')}</g>`, 'bSa', 66),
+    ...(hasLife ? lane('ray', LANES.ray, 0.5, '<g id="bRa" class="wingf"><use href="#qw"/></g>', 'bRa') : []),
+    ...lane('turtle', LANES.turtle, 0.7, `<g id="bTu" transform="scale(1.2)">${TURTLE}</g>`, 'bTu'),
+    ...lane('bannerfish', LANES.shoalB, 0.85, `<g id="bSb">${school('fishB', 7, 31, 'ss')}</g>`, 'bSb'),
+  ]
   return `<g><defs><g id="dl">${DOLPHIN}</g></defs>
-${swimmer('R', HORIZON + 28, 560, 300, 1, `<g transform="scale(.37)">${WHALE_SHARK}</g>`)}
-${pod(640, HORIZON + 46, 1, 0, 0)}${pod(960, HORIZON + 68, 1.25, 20, 1)}${pod(700, HORIZON + 96, 1.5, 37, 2)}
-${swimmer('L', FIN_LANE, 270, 150, 1, FIN)}
+${byDepth(surface)}
 ${hasLife ? LIFE_KINDS + LAGOON : ''}${REEF.far}${hasLife ? REEF.farLife : ''}${REEF.near}${hasLife ? REEF.nearLife : ''}
-${visitor(LANES.manta, 0.7, `<g transform="scale(0.9)">${MANTA}</g>`, 128)}
-${visitor(LANES.shoalA, 0.85, school('shA', 9, 21, 'sr'), 66)}
-${hasLife ? visitor(LANES.ray, 0.5, '<g class="wingf"><use href="#qw"/></g>') : ''}
-${visitor(LANES.turtle, 0.7, `<g transform="scale(1.2)">${TURTLE}</g>`)}
-${visitor(LANES.shoalB, 0.85, school('fishB', 7, 31, 'ss'))}
+${byDepth(under)}
 </g>`
 }
 
@@ -1697,7 +1799,7 @@ function faceCss(rand: () => number): string {
       hold(looks[Math.floor(rand() * M_LOOKS.length)], 1 + rand() * 2.2)
     }
   }
-  const rule = (i: number, spans: readonly Span[]): string => `${shownIn(`fk${i}`, spans, t)}.fk${i}{animation:fk${i} ${f(t)}s step-end ${PHASE} infinite}`
+  const rule = (i: number, spans: readonly Span[]): string => `${shownIn(`fk${i}`, spans, t)}.fk${i}{animation:fk${i} ${f3(t)}s step-end ${PHASE} infinite}`
   return rule(0, calm) + looks.map((spans, i) => rule(i + 1, spans)).join('')
 }
 
@@ -1815,11 +1917,11 @@ function rider(flag: Flag, busy: readonly string[]): string {
   const hailed = flag.hailed ?? flag.age
   let hop = ''
   if (isHailing) {
-    hop = `style="animation:mhops ${HAIL_S}s ease-in-out ${f(-hailed)}s infinite"`
+    hop = `style="animation:mhops ${HAIL_S}s ease-in-out ${f3(-hailed)}s infinite"`
   } else if (flag.from !== 'none') {
     const into = Math.max(0, hailed - flag.age) % HAIL_S
     if (into > HAIL_S * 0.7) {
-      hop = `style="animation:mhops ${HAIL_S}s ease-in-out ${f(-(into + flag.age))}s 1 both"`
+      hop = `style="animation:mhops ${HAIL_S}s ease-in-out ${f3(-(into + flag.age))}s 1 both"`
     }
   }
   const arm = isHailing
@@ -1921,11 +2023,11 @@ ${lies}${turned('lfr', facing.front)}${turned('lsd', facing.side)}${isPlain ? ''
 // set each animation property by name: in the `animation` shorthand a leading
 // `none` reads as the fill mode, and the group would spring back at the end.
 function once(name: string, span: number, t: number): string {
-  return `class="way" style="animation-name:${name};--e:${f(Math.max(0.1, span))}s;--a:${f(t)}"`
+  return `class="way" style="animation-name:${name};--e:${f3(Math.max(0.1, span))}s;--a:${f3(t)}"`
 }
 
 function stepped(name: string, span: number, t: number): string {
-  return `class="cut" style="animation-name:${name};--e:${f(Math.max(0.1, span))}s;--a:${f(t)}"`
+  return `class="cut" style="animation-name:${name};--e:${f3(Math.max(0.1, span))}s;--a:${f3(t)}"`
 }
 
 // Keyframes that carry a group along `legs` over `span` seconds:
@@ -2123,7 +2225,8 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   const onFoot = (span: number): { back: string; front: string; css: string } => {
     const now = along(plan.clawd, t)
     const strides = plan.clawd.filter(leg => leg.stride).map((leg): Span => [leg.from, leg.to])
-    const isOnDeck = (leg: Leg): boolean => [leg.at(0), leg.at(1)].some(p => p.y >= DOCK.y - 2 && p.x < JETTY.tip)
+    // A hop counts whole, though the trip began part way through it.
+    const isOnDeck = (leg: Leg): boolean => (leg.hop === undefined ? [leg.at(0), leg.at(1)] : [leg.hop.a, leg.hop.b]).some(p => p.y >= DOCK.y - 2 && p.x < JETTY.tip)
     const deck = plan.clawd.filter(isOnDeck).map((leg): Span => [leg.from, leg.to])
     const last = plan.clawd[plan.clawd.length - 1]
     const ends: 0 | 1 = last !== undefined && isOnDeck(last) ? 1 : 0
@@ -2157,9 +2260,9 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   }
   if (voyage.phase === 'fetch') {
     // Out on its stretch it roams like a fleet boat, sized by the roam.
-    const sweep = f(t - plan.settled + CIRCUIT_START)
+    const sweep = f3(t - plan.settled + CIRCUIT_START)
     const [far, near] = sizesOf(LEAD_BOAT)
-    const circuit = `<g style="--u:${route.seconds}s;--b:${sweep};--r:${route.rx}px;--q:${route.ry}px;--v:${route.drift}s;--c:${f(Number(sweep) + route.driftFrom * (route.drift ?? 0))};--z0:${far};--z1:${near};--d:0" transform="translate(${route.cx} ${route.cy})">
+    const circuit = `<g style="--u:${route.seconds}s;--b:${sweep};--r:${route.rx}px;--q:${route.ry}px;--v:${route.drift}s;--c:${f3(Number(sweep) + route.driftFrom * (route.drift ?? 0))};--z0:${far};--z1:${near};--d:0" transform="translate(${route.cx} ${route.cy})">
 <g class="bx">${roamed(LEAD_BOAT, sweep, `<g class="bf">${hull(undefined, 1)}</g>${bowOf(LEAD_BOAT, 1, 'class="bw"')}${crewOf(isTwice ? '<use href="#v98"/>' : figure, 1, '', 'class="br"')}`)}</g></g>`
     if (t >= plan.settled) {
       return { boat: circuit, depth, x, sails: 0, early: '', late: '', css: faces + antics }
@@ -2187,7 +2290,7 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   const life = `<g style="--n:${f(isHome ? (t - plan.settled) % day.span : t - plan.settled)}"><g clip-path="url(#hung)"><g class="lpos" transform="translate(${f(at.x)} ${f(at.y)})">${islander()}</g></g><g class="lfront">${LOUNGER_FRONT}</g></g>`
   const now = inLoop(seconds)
   const calms = act === undefined || !isCalming ? '' : ['ca', 'caw', 'can', ...(pastime === undefined ? [] : [pastime])]
-    .map(part => `.${part}{animation:${part} ${CAPTAIN_S}s ${part === 'ca' ? 'ease-in-out' : 'step-end'} ${f(-now)}s ${Math.round((act[1] / CAPTAIN_S) * 10000) / 10000} forwards}`)
+    .map(part => `.${part}{animation:${part} ${CAPTAIN_S}s ${part === 'ca' ? 'ease-in-out' : 'step-end'} ${f3(-now)}s ${Math.round((act[1] / CAPTAIN_S) * 10000) / 10000} forwards}`)
     .join('')
   const css = faces + dayCss(day, rand, voyage.greet, isPlain) + course.css + (isRiding && calms !== '' ? antics + calms : '')
   if (isHome) {
@@ -2686,6 +2789,9 @@ export type SceneState = {
   // How far each boat (by `boatTag`) bore off its course in the drawing
   // before, at `seconds`; none for a first drawing.
   bearing?: Readonly<Record<string, number>>
+  // Swimmers, gulls and dolphins called up by hand, with how many seconds
+  // ago each was called; none when left out.
+  visits?: readonly Visit[]
   // The wall clock the looping animations take their phase from.
   seconds: number
 }
@@ -2716,6 +2822,7 @@ export function drawing(state: SceneState): { source: string; isPlain: boolean; 
 
 function draw(state: SceneState, isPlain: boolean, hasLife: boolean): { source: string; isPlain: boolean; ways: Record<string, WayPlan> } {
   const { mood, fireworks: show, isLeaping, scheme, seconds } = state
+  const visits = state.visits ?? []
   const pair = trip(state.voyage, seconds, state.flag, isPlain)
   const leadSpot: Spot | undefined = pair.boat === '' ? undefined : at => {
     const y = pair.depth(at - seconds)
@@ -2737,7 +2844,7 @@ ${bungalow(90, 563, 0.95)}${bungalow(255, 563, 1)}${bungalow(420, 563, 0.95)}`
   const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">
 <style>${styleFor(scheme)}${CRAB.css}${HERON.css}${HERMIT.css}${boats.css}${pair.css}${around.css}</style>
 ${DEFS}
-<g class="${mood}" style="--t:${f(seconds % 100000)}">
+<g class="${mood}" style="--t:${f3(seconds % 100000)}">
 <rect width="${W}" height="${HORIZON + 2}" fill="url(#sky)"/>
 ${stars()}
 <g>
@@ -2758,7 +2865,7 @@ ${stars()}
 ${ATOLL}
 <g class="glit"><path d="M${SUN_X - 24} ${HORIZON}L${SUN_X + 24} ${HORIZON}L${SUN_X + 190} ${HORIZON + 430}L${SUN_X - 190} ${HORIZON + 430}Z" class="colm" fill="url(#column)" filter="url(#blur6)"/>
 <g class="gcol">${glitter()}</g></g>${show === undefined ? '' : fireworkGlow(show)}</g>
-${seaLife(hasLife)}
+${seaLife(hasLife, visits, seconds)}
 <g><g class="wvs">${waves()}</g>${sparkles()}${state.isCompacting ? WHIRLPOOL : ''}</g>
 <ellipse class="halo" cx="260" cy="570" rx="380" ry="70" fill="url(#halo)" opacity=".85"/>
 <g opacity=".18" class="reflit" filter="url(#soft)" transform="translate(0 1184) scale(1 -1)"><use href="#pier"/></g>
@@ -2786,9 +2893,10 @@ ${CRAB.svg}
 ${HERON.svg}
 <g>${around.parts.map(part => part.svg).join('')}${pair.late}</g>
 <g>
-<g class="gulls"><g transform="translate(0 200)"><path class="gull wing" d="M0 0 q10 -10 20 0 q10 -10 20 0" fill="none" stroke-width="3"/></g>
+<g class="gulls"><g id="gl"><g transform="translate(0 200)"><path class="gull wing" d="M0 0 q10 -10 20 0 q10 -10 20 0" fill="none" stroke-width="3"/></g>
 <g transform="translate(70 230)"><path class="gull wing" d="M0 0 q8 -8 16 0 q8 -8 16 0" fill="none" stroke-width="2.5" style="--d:.3"/></g>
-<g transform="translate(-40 250)"><path class="gull wing" d="M0 0 q6 -6 12 0 q6 -6 12 0" fill="none" stroke-width="2" style="--d:.55"/></g></g>
+<g transform="translate(-40 250)"><path class="gull wing" d="M0 0 q6 -6 12 0 q6 -6 12 0" fill="none" stroke-width="2" style="--d:.55"/></g></g></g>
+${byDepth(called(visits, 'gulls', 0, 30, (age, off) => `<g style="animation:fly ${GULL_CYCLE}s linear ${f3(-age)}s 1 both"><g transform="translate(0 ${off})"><use href="#gl"/></g></g>`))}
 ${isLeaping ? flyingFish() : ''}
 ${show === undefined ? '' : fireworks(show)}</g>
 </g></svg>`

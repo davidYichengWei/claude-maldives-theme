@@ -169,3 +169,28 @@ and seek every animation in Chromium.
   keyframes put every stop that holds one value in one rule
   (`10%,40%,77%{...}`), and its times sit on a 0.3 s grid so percentages
   stay short.
+- Calls (the Control Panel's Wildlife menu, `/maldives visit <kind>`): each
+  adds one crossing of a crosser (both shoals, turtle, manta, eagle ray,
+  whale shark, fin, gulls) or one leap of a pod of two (dolphins), beside the
+  ones on their rounds, which go on untouched. A called crosser clones its
+  kind's body (`bMa`, `bSa`, `bRa`, `bTu`, `bSb`, `bWs`, `bFn`, gulls `gl`)
+  in a one-shot `crossing()` whose delay is the call's age, so every redraw
+  picks it up where it was. The surface swimmers and pods, and the underwater
+  ones, are each drawn by `byDepth()` with their called ones at the y they
+  keep: drawn right after its own kind, a turtle called up above shoal A was
+  painted over it. At most `MOST_CALLED` (3) of a kind are out; `callUp()` in paint.ts
+  gives each a `slot`, fixed for as long as it is out, and the slot sets
+  how far off the lane it keeps (`offLane`: under the water a step up per
+  slot, at the surface a step nearer, gulls a step lower). The slot must
+  not be the call's place in the list: when an earlier call went by, the
+  later ones moved lanes on the next redraw. A dolphin call's slot picks one
+  of `CALLED_PODS`, clear of the pods on their rounds; its leap starts
+  `LEAP_LEAD` after the call and plays once (`ONCE`).
+- Called ones are clones, so the film flattens `b..` and `gl` copies as it
+  does boat copies; without that the wiggles and wingbeats inside them
+  cannot be seeked and every redraw shows as a seam. A paint key change on a
+  call redraws the scene; a call going by does not set `until`, so long
+  crossings do not cause refreshes. Every called kind at its most adds about
+  11.5 KB; `npm run fuzz` draws random calls, often the most of every kind,
+  and `verify/scenarios/wildlife.json` films them across redraws, reloads
+  and fireworks.

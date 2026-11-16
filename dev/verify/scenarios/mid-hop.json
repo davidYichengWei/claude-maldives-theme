@@ -1,0 +1,47 @@
+{
+ "about": "Called away or home while Clawd is in the air between jetty and boat, or on the deck of the boat at the dock: it comes down where it was going and goes on from there",
+ "start": {
+  "mood": "idle",
+  "home": 600
+ },
+ "events": [
+  [
+   1,
+   "turn"
+  ],
+  [
+   12.2,
+   "answer"
+  ],
+  [
+   13.3,
+   "turn"
+  ],
+  [
+   24.4,
+   "answer"
+  ],
+  [
+   27.7,
+   "/maldives island nap"
+  ],
+  [
+   35.3,
+   "turn"
+  ],
+  [
+   49.1,
+   "answer"
+  ],
+  [
+   51.3,
+   "/maldives island nap"
+  ]
+ ],
+ "askEvery": 7,
+ "frames": {
+  "from": 0,
+  "to": 63.3,
+  "every": 0.25
+ }
+}

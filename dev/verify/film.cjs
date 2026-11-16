@@ -207,7 +207,8 @@ function stepFaults(a, b, dt) {
     // settled could end before it is seeked, and an ended animation is no
     // longer listed to seek, so a busy machine changed what a frame showed.
     await page.setContent(`<html><head><style>*{animation-play-state:paused!important}</style></head><body style="margin:0;overflow:hidden">${svg}</body></html>`)
-    // A boat drawn more than once is drawn by <use> copies. The animations
+    // A boat drawn more than once is drawn by <use> copies, and so is each
+    // swimmer, gull flock or fin called up by hand (b.. and gl). The animations
     // inside a copy's shadow tree are not the document's, so they cannot be
     // seeked, and nothing in a copy can be measured: each copy of a boat is
     // swapped for a plain clone of it, which draws the same.
@@ -218,7 +219,7 @@ function stepFaults(a, b, dt) {
         left = false
         for (const use of [...document.querySelectorAll('use')]) {
           const id = (use.getAttribute('href') ?? '').slice(1)
-          if (!/^v\d+$/.test(id)) continue
+          if (!/^(v\d+|b[A-Z][a-z]|gl)$/.test(id)) continue
           const clone = document.getElementById(id).cloneNode(true)
           clone.removeAttribute('id')
           use.replaceWith(clone)

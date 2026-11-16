@@ -86,7 +86,14 @@ function census() {
     const [name, layer] = LANES[lane] ?? [`swimmer ${lane}`, 'under']
     add(name, layer, g, lane)
   }
-  document.querySelectorAll('.lpX').forEach((g, i) => add(`dolphin ${i + 1}`, 'under', g, g.getBoundingClientRect().bottom))
+  // A dolphin is named by where its pod is and where it is in the pod, not
+  // by its place in the document: a called leap going by leaves the scene,
+  // and the ones after it would take over its number.
+  document.querySelectorAll('.lpX').forEach(g => {
+    const pod = (g.parentElement.closest('[transform*="scale"]')?.getAttribute('transform') ?? '').match(/-?[\d.]+/g)?.slice(0, 2).join(',')
+    const x = (g.parentElement.getAttribute('transform') ?? '').match(/-?[\d.]+/)?.[0]
+    add(`dolphin ${pod}/${x}`, 'under', g, g.getBoundingClientRect().bottom)
+  })
   // Twinkles on the water.
   document.querySelectorAll('g.spark > g').forEach((g, i) => add(`sparkle ${i + 1}`, 'glint', g, yOf(g)))
   // On the surface and ashore.

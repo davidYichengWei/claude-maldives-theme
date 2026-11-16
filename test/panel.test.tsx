@@ -112,6 +112,104 @@ test('the island pastimes are offered only while Claude is idle or done', async 
   await ui.unmount()
 })
 
+test('Wildlife calls up at most three of a kind at once, more once they have gone by', async ($, on) => {
+  let now = 1_000_000
+  on('clock.now', () => ({ value: now }))
+  on('clock.after', () => ({ value: undefined }))
+  await $.command.run({ command: 'maldives', args: 'panel' })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  const isDim = async (key: string): Promise<boolean> => (await ui.find({ key }))?.props.dimColor === true
+
+  await ui.press({ key: 'menu-wildlife' })
+  for (const key of ['call-snappers', 'call-bannerfish', 'call-turtle', 'call-manta', 'call-ray', 'call-whaleShark', 'call-fin', 'call-dolphins', 'call-gulls']) {
+    expect(await isDim(key)).toBe(false)
+  }
+  // A press lights the button and counts what is out, so it shows at once.
+  await ui.press({ key: 'call-turtle' })
+  expect(await isLit(ui, 'call-turtle')).toBe(true)
+  expect((await ui.find({ key: 'call-turtle' }))?.props.label).toBe('Turtle ×1')
+  await ui.press({ key: 'call-turtle' })
+  expect(await isDim('call-turtle')).toBe(false)
+  await ui.press({ key: 'call-turtle' })
+  expect((await ui.find({ key: 'call-turtle' }))?.props.label).toBe('Turtle ×3')
+  expect(await isDim('call-turtle')).toBe(true)
+  expect(await isLit(ui, 'call-manta')).toBe(false)
+  // The others are their own count.
+  expect(await isDim('call-manta')).toBe(false)
+  expect(await $.command.run({ command: 'maldives', args: 'visit turtle' })).toMatchObject({ text: expect.stringContaining('Already 3 turtle') })
+
+  // An hour on, every turtle has crossed and the button is lit again.
+  now += 3_600_000
+  await ui.press({ key: 'menu-wildlife' })
+  await ui.press({ key: 'menu-wildlife' })
+  expect(await isDim('call-turtle')).toBe(false)
+  expect(await isLit(ui, 'call-turtle')).toBe(false)
+  expect((await ui.find({ key: 'call-turtle' }))?.props.label).toBe('Turtle')
+  expect(await $.command.run({ command: 'maldives', args: 'visit turtle' })).toMatchObject({ text: 'Called up: turtle' })
+  expect(await $.command.run({ command: 'maldives', args: 'visit heron' })).toMatchObject({ text: expect.stringContaining('Usage: /maldives visit') })
+  await ui.unmount()
+})
+
+test('the flying fish leap on a press, once at a time, and the button goes out as they land', async ($, on) => {
+  let now = 1_000_000
+  on('clock.now', () => ({ value: now }))
+  on('clock.after', () => ({ value: undefined }))
+  await $.command.run({ command: 'maldives', args: 'panel' })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await ui.press({ key: 'menu-wildlife' })
+  expect(await isLit(ui, 'call-flyingFish')).toBe(false)
+  await ui.press({ key: 'call-flyingFish' })
+  expect(await isLit(ui, 'call-flyingFish')).toBe(true)
+  // A second press while they are in the air starts nothing: still lit at
+  // 4.9 s from the first, out at 5 s.
+  now += 3000
+  await ui.press({ key: 'call-flyingFish' })
+  now += 1900
+  await ui.press({ key: 'menu-wildlife' })
+  await ui.press({ key: 'menu-wildlife' })
+  expect(await isLit(ui, 'call-flyingFish')).toBe(true)
+  now += 200
+  await ui.press({ key: 'menu-wildlife' })
+  await ui.press({ key: 'menu-wildlife' })
+  expect(await isLit(ui, 'call-flyingFish')).toBe(false)
+  await ui.press({ key: 'call-flyingFish' })
+  expect(await isLit(ui, 'call-flyingFish')).toBe(true)
+  await ui.unmount()
+})
+
+test('the panel speaks Chinese once chosen, every menu of it, and English again', async ($, on) => {
+  on('clock.now', () => ({ value: 1_000_000 }))
+  // The store across sessions, as the engine keeps it.
+  const kept = new Map<string, unknown>()
+  on('store.set', ($, e) => {
+    kept.set(e.key, e.value)
+    return { value: undefined }
+  })
+  on('store.get', ($, e) => ({ value: kept.get(e.key) }))
+  await $.command.run({ command: 'maldives', args: 'panel' })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  // Every word shown: the Texts and the Buttons' labels.
+  const shown = async (): Promise<string[]> => [
+    ...(await ui.findAll({ type: 'Text' })).map(t => t.text),
+    ...(await ui.findAll({ type: 'Button' })).map(b => String(b.props.label ?? '')),
+  ]
+  await ui.press({ key: 'menu-appearance' })
+  await ui.press({ key: 'lang-zh' })
+  expect(await isLit(ui, 'lang-zh')).toBe(true)
+  expect(await ui.find({ type: 'Text', text: '控制面板' })).toBeDefined()
+  for (const menu of ['appearance', 'boats', 'claude', 'wildlife']) {
+    if (menu !== 'appearance') await ui.press({ key: `menu-${menu}` })
+    // Left in English: Clawd's name and the language's own.
+    const english = (await shown()).filter(word => /[A-Za-z]/.test(word.replace(/Clawd|English/g, '')))
+    expect({ menu, english }).toEqual({ menu, english: [] })
+  }
+  await ui.press({ key: 'menu-appearance' })
+  expect(kept.get('lang')).toBe('zh')
+  await ui.press({ key: 'lang-en' })
+  expect(await ui.find({ type: 'Text', text: 'Control Panel' })).toBeDefined()
+  await ui.unmount()
+})
+
 test('a survey keeps the band', async ($, on) => {
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)

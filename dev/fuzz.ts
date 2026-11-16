@@ -1,7 +1,8 @@
-import { scene } from '../hooks/scene'
-import type { SceneState } from '../hooks/scene'
-import { AT_HOME, embark, planOf } from '../hooks/voyage'
+import { scene, VISIT_SECONDS } from '../hooks/scene'
+import type { SceneState, Visit, VisitKind } from '../hooks/scene'
+import { AT_HOME, DECK, DOCK, JETTY, embark, planOf } from '../hooks/voyage'
 import type { Voyage } from '../hooks/voyage'
+import type { Point } from '../hooks/fleet'
 import { writeFileSync } from 'fs'
 import { spawn } from 'child_process'
 import { cpus } from 'os'
@@ -9,13 +10,35 @@ import { constructsOf, PROVEN } from './verify/constructs'
 const base = (voyage: Voyage, now: number, mood: SceneState['mood']): SceneState => ({ mood, flag: { from: 'none', to: 'none', age: 99 }, voyage, boats: [], isCompacting: false, isLeaping: true, fireworks: undefined, scheme: 'dark', seconds: now / 1000 })
 // The same, with the rest of the state drawn at random, so every kind of
 // scene (each scheme, boats out and leaving, flags, fireworks, compacting,
-// plain) comes up.
+// plain) comes up, with calls out: often none, sometimes a few, and now and
+// then the most of every kind at once, the longest a scene can be.
 const SIGNALS = ['none', 'permission', 'question', 'plan', 'error'] as const
 const SCHEMES = ['light', 'dark', undefined] as const
 const varied = (voyage: Voyage, now: number, mood: SceneState['mood'], k: number): SceneState => {
   const pick = <T,>(items: readonly T[]): T => items[Math.floor(rnd() * items.length)] as T
   const boats = Array.from({ length: Math.floor(rnd() * 7) }, (_, slot) => ({ kind: rnd() < 0.5 ? 'crew' : 'shell', slot, from: rnd() < 0.5 ? 'L' : 'R', pass: rnd() < 0.5 ? 'under' : 'over', born: now - rnd() * 90000, gone: rnd() < 0.2 ? now - rnd() * 3000 : undefined })) as SceneState['boats']
-  return { ...base(voyage, now, mood), flag: { from: pick(SIGNALS), to: pick(SIGNALS), age: rnd() * 3, hailed: rnd() * 5 }, boats, isCompacting: rnd() < 0.2, isLeaping: rnd() < 0.4, fireworks: rnd() < 0.2 ? rnd() * 9 : undefined, scheme: SCHEMES[k % 3] }
+  const KINDS = Object.keys(VISIT_SECONDS) as VisitKind[]
+  const crowd = rnd()
+  const visits: Visit[] = crowd < 0.4 ? [] : KINDS.flatMap(kind => Array.from({ length: crowd > 0.85 ? 3 : Math.floor(rnd() * 4) }, (_, slot) => ({ kind, age: rnd() * VISIT_SECONDS[kind], slot })))
+  return { ...base(voyage, now, mood), visits, flag: { from: pick(SIGNALS), to: pick(SIGNALS), age: rnd() * 3, hailed: rnd() * 5 }, boats, isCompacting: rnd() < 0.2, isLeaping: rnd() < 0.4, fireworks: rnd() < 0.2 ? rnd() * 9 : undefined, scheme: SCHEMES[k % 3] }
+}
+// What the mascot stands on at `p`: the deck of the boat at the dock, the
+// jetty, the island, or nothing (in the air over the water).
+const footing = (p: Point): string =>
+  Math.abs(p.y - DOCK.y) < 2 && Math.abs(p.x - DOCK.x) <= DECK + 1 ? 'deck' : p.x >= JETTY.root - 6 ? 'island' : p.x >= JETTY.tip - 1 && Math.abs(p.y - JETTY.y) <= 3 ? 'jetty' : 'air'
+// Whatever moment a trip gives way to the next, the mascot gets anywhere off
+// its feet only by a hop: a stretch of any other kind that starts or ends in
+// the air, or goes between the deck and the jetty, is a fault. A trip called
+// in the middle of a hop once floated it down or across instead.
+const footFaults = (last: Voyage, phase: Voyage['phase'], at: number, what: string): void => {
+  for (const leg of planOf(embark(last, phase, at, false)).clawd) {
+    if (leg.hop !== undefined) continue
+    const [a, b] = [footing(leg.at(0)), footing(leg.at(1))]
+    if (a === 'air' || b === 'air' || (a !== b && [a, b].every(one => one === 'deck' || one === 'jetty'))) {
+      bad.push(`${what}: the mascot goes from the ${a} to the ${b} without a hop`)
+      return
+    }
+  }
 }
 let r = 12345
 const rnd = (): number => { r = (r * 1103515245 + 12345) % 2147483648; return r / 2147483648 }
@@ -64,6 +87,9 @@ for (let i = 0; i < 400; i++) {
   const phase = v.phase === 'land' ? 'fetch' : 'land'
   v = embark(v, phase, now, rnd() < 0.5)
   const plan = planOf(v)
+  if (i % shards === shard) {
+    for (let dt = 0; dt < Math.min(plan.settled + 1, 45); dt += 0.05) footFaults(v, phase === 'fetch' ? 'land' : 'fetch', now + dt * 1000, `${i} ${phase} called away at ${dt.toFixed(2)}s`)
+  }
   for (const dt of [0.02, 0.4, 2, plan.boards - 0.1, plan.lands + 0.1, plan.settled - 0.2, plan.settled + 0.5, plan.gone + 1, 60]) {
     const mood = phase === 'fetch' ? 'working' : 'done'
     const other = varied(v, now + Math.max(0, dt) * 1000, mood, i)

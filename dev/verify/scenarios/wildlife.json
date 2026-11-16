@@ -1,0 +1,120 @@
+{
+ "about": "Every kind called up, some three at once, carrying on unchanged across redraws, reloads and fireworks",
+ "start": {
+  "mood": "idle",
+  "home": 600
+ },
+ "scheme": "light",
+ "events": [
+  [
+   0,
+   "turn"
+  ],
+  [
+   1,
+   "/maldives visit turtle"
+  ],
+  [
+   1.5,
+   "/maldives visit turtle"
+  ],
+  [
+   2,
+   "/maldives visit turtle"
+  ],
+  [
+   2.5,
+   "/maldives visit turtle"
+  ],
+  [
+   3,
+   "/maldives visit dolphins"
+  ],
+  [
+   4,
+   "/maldives visit gulls"
+  ],
+  [
+   5,
+   "/maldives visit snappers"
+  ],
+  [
+   6,
+   "/maldives visit whaleShark"
+  ],
+  [
+   8,
+   "/maldives visit fin"
+  ],
+  [
+   9,
+   "/maldives visit manta"
+  ],
+  [
+   10,
+   "/maldives visit ray"
+  ],
+  [
+   11,
+   "/maldives visit bannerfish"
+  ],
+  [
+   14,
+   "/maldives visit dolphins"
+  ],
+  [
+   15,
+   "/maldives visit dolphins"
+  ],
+  [
+   16,
+   "reload"
+  ],
+  [
+   18,
+   "/maldives crew 3"
+  ],
+  [
+   22,
+   "answer"
+  ],
+  [
+   30,
+   "/maldives visit gulls"
+  ],
+  [
+   31,
+   "/maldives visit gulls"
+  ],
+  [
+   40,
+   "/maldives visit snappers"
+  ],
+  [
+   41,
+   "/maldives visit snappers"
+  ],
+  [
+   50,
+   "/maldives fireworks"
+  ],
+  [
+   60,
+   "reload"
+  ],
+  [
+   70,
+   "/maldives visit dolphins"
+  ],
+  [
+   80,
+   "/maldives crew 0"
+  ]
+ ],
+ "askEvery": 7,
+ "frames": {
+  "from": 0,
+  "to": 100,
+  "every": 0.25
+ }
+}

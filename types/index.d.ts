@@ -20,6 +20,11 @@ declare module 'claude-code' {
       // When the fireworks went up (clock ms), or 0 when none are going.
       fireworks: number
       leap: number
+      // The light/dark scheme in force, as the store keeps it; whether the
+      // control panel above the prompt is shown, and which of its menus is open.
+      scheme: 'light' | 'dark' | 'auto'
+      controls: boolean
+      menu: 'none' | 'appearance' | 'boats' | 'claude'
       // The lead boat's trip with the mascot, from the moment it began.
       voyage: { phase: 'fetch' | 'land'; at: number; boat: Point | null; clawd: Point; aboard: boolean; greet: boolean; drill?: 'fish' | 'nap' | 'sun' | 'sip' | 'fire' | 'tour'; exit?: 'L' | 'R'; facing?: number }
       // The other boats on the water, with the times each set out and was

@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register, ThemeSetArgs } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren, ThemeSetArgs } from 'claude-code'
 
 import type { Mood, Need } from '../types'
 import { berthAt, muster } from './fleet'
@@ -8,7 +8,7 @@ import { makeColors } from './make-colors.js'
 import { FIREWORKS_MS, KEY_PARTS, UNFLAGGED, UNPAINTED, hoist, paint, signalOf } from './paint'
 import type { Flag } from './paint'
 import { AT_HOME, DRILLS, embark, planOf } from './voyage'
-import type { Voyage } from './voyage'
+import type { Drill, Voyage } from './voyage'
 
 const { theme, problems } = makeColors({
   label: 'Maldives lagoon',
@@ -78,10 +78,25 @@ let askedTool = ''
 
 type Scheme = 'light' | 'dark' | 'auto'
 const SCHEMES: readonly Scheme[] = ['light', 'dark', 'auto']
+// The scheme in force, kept from the store for the control pane to show.
+const shownScheme = atom({ plugin: 'maldives', key: 'scheme' } as const, 'auto' as Scheme)
+// The control panel above the prompt: whether it is shown, and which of its
+// menus is open below its top row (none for the top row alone).
+type Menu = 'appearance' | 'boats' | 'claude'
+const MENUS: readonly { menu: Menu; label: string }[] = [
+  { menu: 'appearance', label: 'Appearance' },
+  { menu: 'boats', label: 'Boats' },
+  { menu: 'claude', label: 'Claude' },
+]
+const controls = atom({ plugin: 'maldives', key: 'controls' } as const, false)
+const menu = atom({ plugin: 'maldives', key: 'menu' } as const, 'none' as Menu | 'none')
+
+const title = (word: string): string => word.charAt(0).toUpperCase() + word.slice(1)
 
 async function applyLook($: EngineInterface): Promise<void> {
   const stored = await $.store.get('scheme')
   const scheme = SCHEMES.find(s => s === stored) ?? 'auto'
+  await update($, shownScheme, () => scheme)
   const look: ThemeSetArgs = scheme === 'auto' ? LOOK : { ...LOOK, overrideColorScheme: scheme }
   const set = await $.theme.set(look)
   if (!set.isDrawn) {
@@ -90,6 +105,8 @@ async function applyLook($: EngineInterface): Promise<void> {
 }
 
 const MOODS: readonly Mood[] = ['idle', 'working', 'waiting', 'done', 'error']
+// As many boats of a kind as there are circuits for them.
+const MOST_BOATS = 5
 const NEEDS: readonly Need[] = ['permission', 'question', 'plan']
 
 // The lead boat fetches the mascot off the island when the agent has work, and
@@ -171,6 +188,47 @@ function needOf(tool: string): Need {
   return tool === 'AskUserQuestion' ? 'question' : tool === 'ExitPlanMode' ? 'plan' : 'permission'
 }
 
+// What `/maldives` and the controls do, each returning what it did.
+async function forceScheme($: EngineInterface, scheme: Scheme): Promise<string> {
+  await $.store.set('scheme', scheme)
+  await applyLook($)
+  return scheme === 'auto' ? 'Following the app appearance again.' : `Forced ${scheme} mode.`
+}
+
+async function sendOut($: EngineInterface, kind: 'crew' | 'shells', wanted: number): Promise<string> {
+  const total = Math.max(0, Math.min(MOST_BOATS, wanted))
+  if (kind === 'crew') await update($, crew, () => total)
+  else await update($, shells, () => total)
+  await recount($)
+  return kind === 'crew' ? `Dinghies out: ${total}` : `Fishing boats out: ${total}`
+}
+
+async function goAshore($: EngineInterface, drill: Drill): Promise<string> {
+  const current = await read($, mood)
+  if (current === 'working' || current === 'waiting') {
+    return 'Clawd is out on the boat while Claude works. Try again once the turn is over.'
+  }
+  const now = await $.clock.now()
+  await update($, voyage, last => ({ ...embark(last, 'land', now, false), drill }))
+  return drill === 'tour' ? 'Clawd heads home, then takes a short turn at each pastime.' : `Clawd heads home, then goes straight to: ${drill}`
+}
+
+async function preview($: EngineInterface, state: Mood | Need): Promise<string> {
+  const kind = NEEDS.find(n => n === state)
+  if (kind !== undefined) {
+    await waitOn($, kind)
+    return `Backdrop state: waiting on ${kind}`
+  }
+  await setMood($, state as Mood)
+  return `Backdrop state: ${state}`
+}
+
+async function goLive($: EngineInterface): Promise<string> {
+  const real = await reset($)
+  const what = real.mood === 'waiting' ? `waiting on ${await read($, need)}` : real.mood
+  return `Back to what Claude is doing: ${what}, ${real.crew} dinghies, ${real.shells} fishing boats.`
+}
+
 async function celebrate($: EngineInterface): Promise<void> {
   const firedAt = await $.clock.now()
   await update($, fireworks, () => firedAt)
@@ -214,13 +272,17 @@ export const register: Register = on => {
     await $.command.register({
       name: 'maldives',
       description:
-        'Preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), go back to what Claude is really doing with reset, set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, or print what the backdrop is showing with debug',
+        'Show or hide the Control Panel above the prompt with panel, preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), go back to what Claude is really doing with reset, set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, or print what the backdrop is showing with debug',
     })
     return next(e)
   })
 
   on('command.run', { command: 'maldives' }, async ($, e) => {
     const arg = e.args.trim()
+    if (arg === 'panel') {
+      const isShown = await update($, controls, shown => !shown)
+      return { text: isShown ? 'Control Panel is above the prompt.' : 'Control Panel hidden.' }
+    }
     if (arg === 'debug') {
       const now = await $.clock.now()
       const trip = await read($, voyage)
@@ -237,9 +299,7 @@ export const register: Register = on => {
       return { text: lines.join('\n') }
     }
     if (arg === 'reset') {
-      const real = await reset($)
-      const what = real.mood === 'waiting' ? `waiting on ${await read($, need)}` : real.mood
-      return { text: `Back to what Claude is doing: ${what}, ${real.crew} dinghies, ${real.shells} fishing boats.` }
+      return { text: await goLive($) }
     }
     if (arg === 'fireworks') {
       await celebrate($)
@@ -254,43 +314,106 @@ export const register: Register = on => {
       if (drill === undefined) {
         return { text: `Usage: /maldives island ${DRILLS.join(' | ')}` }
       }
-      const current = await read($, mood)
-      if (current === 'working' || current === 'waiting') {
-        return { text: 'Clawd is out on the boat while Claude works. Try again once the turn is over.' }
-      }
-      const now = await $.clock.now()
-      await update($, voyage, last => ({ ...embark(last, 'land', now, false), drill }))
-      return { text: drill === 'tour' ? 'Clawd heads home, then takes a short turn at each pastime.' : `Clawd heads home, then goes straight to: ${drill}` }
+      return { text: await goAshore($, drill) }
     }
-    if (word === 'shells') {
-      const count = asked ?? ((await read($, shells)) + 1) % 4
-      await update($, shells, () => count)
-      await recount($)
-      return { text: `Fishing boats out: ${count}` }
-    }
-    if (word === 'crew') {
-      const count = asked ?? ((await read($, crew)) + 1) % 4
-      await update($, crew, () => count)
-      await recount($)
-      return { text: `Dinghies out: ${count}` }
+    if (word === 'shells' || word === 'crew') {
+      const out = word === 'crew' ? await read($, crew) : await read($, shells)
+      return { text: await sendOut($, word, asked ?? (out + 1) % 4) }
     }
     const scheme = SCHEMES.find(s => s === arg)
     if (scheme !== undefined) {
-      await $.store.set('scheme', scheme)
-      await applyLook($)
-      return { text: scheme === 'auto' ? 'Following the app appearance again.' : `Forced ${scheme} mode.` }
+      return { text: await forceScheme($, scheme) }
     }
-    const kind = NEEDS.find(n => n === arg)
-    if (kind !== undefined) {
-      await waitOn($, kind)
-      return { text: `Backdrop state: waiting on ${kind}` }
-    }
-    const pick = MOODS.find(m => m === arg)
+    const pick = [...MOODS, ...NEEDS].find(m => m === arg)
     if (pick === undefined) {
-      return { text: `Usage: /maldives ${[...MOODS, ...NEEDS, 'reset', 'crew [0-5]', 'shells [0-5]', 'fireworks', `island ${DRILLS.join('|')}`, ...SCHEMES].join(' | ')}` }
+      return { text: `Usage: /maldives ${['panel', ...MOODS, ...NEEDS, 'reset', 'crew [0-5]', 'shells [0-5]', 'fireworks', `island ${DRILLS.join('|')}`, ...SCHEMES].join(' | ')}` }
     }
-    await setMood($, pick)
-    return { text: `Backdrop state: ${pick}` }
+    return { text: await preview($, pick) }
+  })
+
+  // The control panel: a top row of menus, Reset and Close, and under it the
+  // open menu's buttons. Claude's menu offers the island's pastimes only while
+  // Claude is idle or done, when the mascot is ashore to take them up.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey || !(await read($, controls))) {
+      return next(e)
+    }
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const open = await read($, menu)
+    // What a button does shows on the backdrop and in which button is lit, so
+    // the words an action returns for `/maldives` are not shown here.
+    const act = (run: () => Promise<unknown>) => async (): Promise<void> => {
+      await run()
+    }
+    const pick = (key: string, label: string, isOn: boolean, run: () => Promise<unknown>) => (
+      <Button key={key} label={label} variant={isOn ? 'primary' : 'secondary'} onPress={act(run)} />
+    )
+    // Close is tinted the lagoon's coral, apart from the controls.
+    const CLOSE_TINT = '#ff9a8b'
+    // Every row starts with a heading of one width, so the buttons below the
+    // menus start where the menus do.
+    const HEADING = 15
+    const line = (heading: string, buttons: RenderChildren[], isBold = false) => (
+      <Box flexDirection="row" gap={1} rowGap={2} flexWrap="wrap" alignItems="center">
+        <Box width={HEADING}>
+          <Text bold={isBold} dimColor={!isBold}>{heading}</Text>
+        </Box>
+        {buttons}
+      </Box>
+    )
+    const rows: RenderChildren[] = []
+    if (open === 'appearance') {
+      const scheme = await read($, shownScheme)
+      rows.push(line('Scheme', SCHEMES.map(one => pick(`scheme-${one}`, title(one), one === scheme, () => forceScheme($, one)))))
+    } else if (open === 'boats') {
+      const counts = { crew: await read($, crew), shells: await read($, shells) }
+      const stepper = (heading: string, which: 'crew' | 'shells') =>
+        line(heading, [
+          <Button key={`${which}-less`} label="−" onPress={act(() => sendOut($, which, counts[which] - 1))} />,
+          <Text>{String(counts[which])}</Text>,
+          <Button key={`${which}-more`} label="+" onPress={act(() => sendOut($, which, counts[which] + 1))} />,
+        ])
+      rows.push(stepper('Dinghies', 'crew'), stepper('Fishing boats', 'shells'))
+    } else if (open === 'claude') {
+      const current = await read($, mood)
+      const kind = await read($, need)
+      rows.push(
+        line('State', [
+          // Done differs from idle only in the wave Clawd gives as it lands, so
+          // one button stands for both.
+          ...(['idle', 'working', 'error'] as const).map(m => pick(`mood-${m}`, title(m), m === current || (m === 'idle' && current === 'done'), () => preview($, m))),
+          pick('fireworks', 'Fireworks', false, () => celebrate($)),
+        ]),
+        line('Waiting on', NEEDS.map(n => pick(`need-${n}`, title(n), current === 'waiting' && n === kind, () => preview($, n)))),
+      )
+      if (current === 'idle' || current === 'done') {
+        const doing = (await read($, voyage)).drill
+        rows.push(line('On the island', DRILLS.map(d => pick(`drill-${d}`, title(d), d === doing, () => goAshore($, d)))))
+      }
+    }
+    return (
+      <Box flexDirection="column" gap={2}>
+        {line(
+          'Control Panel',
+          [
+            ...MENUS.map(one => (
+              <Button key={`menu-${one.menu}`} label={one.label} variant={one.menu === open ? 'primary' : 'secondary'} onPress={() => update($, menu, was => (was === one.menu ? 'none' : one.menu))} />
+            )),
+            // Reset puts the panel back to its top row as well.
+            <Button key="reset" label="Reset" onPress={act(async () => {
+              await goLive($)
+              await update($, menu, () => 'none')
+            })} />,
+            <Box flexGrow={1} />,
+            <Button key="close" label="Close" role="dismiss" onPress={() => update($, controls, () => false)}>
+              <Text color={CLOSE_TINT}>Close</Text>
+            </Button>,
+          ],
+          true,
+        )}
+        {rows}
+      </Box>
+    )
   })
 
   // Sending a prompt sets the fish leaping. An idle session redraws as its turn

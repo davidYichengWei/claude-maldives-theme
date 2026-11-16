@@ -1,6 +1,6 @@
 {
   "name": "maldives",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A Maldives lagoon theme for the Claude desktop app: an animated backdrop that follows what Claude is doing, with Clawd riding a sailboat while it works and living on the island while it rests",
   "author": {
     "name": "davidYichengWei"

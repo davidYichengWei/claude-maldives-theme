@@ -4,7 +4,7 @@
 // a function of the time since the trip began, so a redraw finds both where
 // they were.
 
-import { ROUTES, eased, lapAt } from './fleet'
+import { ROUTES, TURN_PIECES, eased, lapAt } from './fleet'
 import type { Boat, Curve, Point, Side } from './fleet'
 
 // The palms and the hammock stand around this x. The beach runs from its tip
@@ -71,7 +71,8 @@ const LAP_S = ROUTES.lead[0]?.seconds ?? 100
 export const CIRCUIT_START = LAP_S * 0.515
 // How a circuit boat faces through its lap, as [share of the lap, scaleX]: it
 // comes about at either end. The scene's `of` keyframes say the same.
-export const LAP_FACING: readonly [number, number][] = [[0, 0], [0.015, 1], [0.485, 1], [0.5, 0], [0.515, -1], [0.985, -1], [1, 0]]
+const TURN = 1 / TURN_PIECES
+export const LAP_FACING: readonly [number, number][] = [[0, 0], [TURN, 1], [0.5 - TURN, 1], [0.5, 0], [0.5 + TURN, -1], [1 - TURN, -1], [1, 0]]
 
 // Scatter in [0, 1) that is the same for the same seed: what the mascot does
 // is drawn from it, so each trip has a day of its own that every redraw
@@ -217,25 +218,17 @@ export function risingFrom(at: Point): { bed: 'hammock' | 'lounger'; u: number }
   if (bed !== undefined) {
     return { bed, u: 0 }
   }
-  const unease = (done: number): number => {
-    let lo = 0
-    let hi = 1
-    for (let i = 0; i < 30; i++) {
-      const mid = (lo + hi) / 2
-      if (eased(EASE, mid) < done) lo = mid
-      else hi = mid
-    }
-    return (lo + hi) / 2
-  }
+  // The day carries it down at an even pace (`lifeAt`), so how far down it
+  // is tells how much of its getting up is behind it.
   if (Math.abs(at.x - HAMMOCK.x) < 0.5 && at.y > HAMMOCK.y && at.y < GROUND_Y - 0.5) {
-    return { bed: 'hammock', u: unease((at.y - HAMMOCK.y) / (GROUND_Y - HAMMOCK.y)) }
+    return { bed: 'hammock', u: (at.y - HAMMOCK.y) / (GROUND_Y - HAMMOCK.y) }
   }
   const run = { x: BY_LOUNGER.x - ON_LOUNGER.x, y: BY_LOUNGER.y - ON_LOUNGER.y }
   const length = Math.hypot(run.x, run.y)
   const along = ((at.x - ON_LOUNGER.x) * run.x + (at.y - ON_LOUNGER.y) * run.y) / (length * length)
   const off = Math.abs((at.x - ON_LOUNGER.x) * run.y - (at.y - ON_LOUNGER.y) * run.x) / length
   if (off < 0.5 && along > 0 && along < 1 - 0.5 / length) {
-    return { bed: 'lounger', u: unease(along) }
+    return { bed: 'lounger', u: along }
   }
   return undefined
 }
@@ -261,14 +254,16 @@ export function dayOf(seed: number, drill?: Drill): Day {
   return built.day
 }
 
-// Where the mascot is `seconds` into `day`.
+// Where the mascot is `seconds` into `day`. It goes from place to place at
+// an even pace, as the scene's `lpos` keyframes carry it: easing every walk
+// of a day would take more stops than the scene has room for on its clock.
 export function lifeAt(day: Day, seconds: number): Point {
   const s = ((seconds % day.span) + day.span) % day.span
   let from: Point = HOME
   let since = 0
   for (const step of day.steps) {
     if (s < step.until) {
-      const e = eased(EASE, (s - since) / Math.max(0.001, step.until - since))
+      const e = Math.min(1, (s - since) / Math.max(0.001, step.until - since))
       return { x: from.x + (step.x - from.x) * e, y: from.y + (step.y - from.y) * e }
     }
     from = step
@@ -338,11 +333,14 @@ function hop(from: number, a: Point, b: Point, p0 = 0): Leg {
 // The hop the mascot is in the air in at `t` along `legs`, if any.
 function hopAt(legs: readonly Leg[], t: number): Hop | undefined {
   const leg = legs.find(one => t < one.to)
-  if (leg?.hop === undefined || t <= leg.from) {
+  if (leg?.hop === undefined || t < leg.from) {
     return undefined
   }
   const { a, b, p0 } = leg.hop
-  return { a, b, p: p0 + (1 - p0) * ((t - leg.from) / (leg.to - leg.from)) }
+  const p = p0 + (1 - p0) * ((t - leg.from) / (leg.to - leg.from))
+  // Still on the ground where a hop starts; a hop taken over from a trip
+  // called away mid-air is off it from its first instant.
+  return p > 0 ? { a, b, p } : undefined
 }
 
 const isDeck = (at: Point): boolean => Math.abs(at.y - DOCK.y) < 2 && Math.abs(at.x - DOCK.x) <= DECK + 1

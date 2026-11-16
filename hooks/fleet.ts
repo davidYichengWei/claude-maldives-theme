@@ -1,6 +1,8 @@
 // The boats on the lagoon: which are out, where each one sails, and how it
 // comes in by one edge of the view and goes out by the other.
 
+import { beat } from './clock'
+
 export type BoatKind = 'lead' | 'crew' | 'shell'
 export type Side = 'L' | 'R'
 
@@ -69,12 +71,22 @@ function sizeAt(kind: BoatKind, y: number): number {
   return Math.round(SIZE[kind] * depthScale(y) * 1000) / 1000
 }
 
+// A sweep there and back is drawn in TURN_PIECES even stretches (a turn at
+// either end takes one), so it lasts a whole number of SWEEP_TICKS ticks of
+// the scene's clock, each stretch whole ticks; a drift, of DRIFT_TICKS.
+export const TURN_PIECES = 48
+// Each eased swing of a sweep or a drift is drawn as straight stretches, a
+// SWING_PIECES-th of the sweep each; a boat's place follows the same lines.
+export const SWING_PIECES = 12
+export const SWEEP_TICKS = 48
+export const DRIFT_TICKS = 12
+
 // Water from `left` to `right` and from `far` to `near` (at the middle of
-// the sweep), swept in `seconds` and drifted across in `drift`, its right
-// end `tilt` further out.
+// the sweep), swept in about `seconds` and drifted across in about `drift`,
+// its right end `tilt` further out.
 function roam(kind: BoatKind, [left, right]: [number, number], [far, near]: [number, number], seconds: number, drift: number, driftFrom: number, tilt = 0): Route {
   const cy = (far + near) / 2
-  return { cx: (left + right) / 2, cy, rx: (right - left) / 2, ry: (near - far) / 2, tilt, seconds, drift, driftFrom, scale: sizeAt(kind, cy), isFar: far - Math.abs(tilt) < 600 }
+  return { cx: (left + right) / 2, cy, rx: (right - left) / 2, ry: (near - far) / 2, tilt, seconds: beat(seconds, SWEEP_TICKS), drift: beat(drift, DRIFT_TICKS), driftFrom, scale: sizeAt(kind, cy), isFar: far - Math.abs(tilt) < 600 }
 }
 
 // A boat's size where it is on its water. On a roam the scene sizes it by
@@ -286,7 +298,14 @@ export function lapStart(boat: Boat): number {
 export function lapAt(boat: Boat, age: number): Fix {
   const route = routeOf(boat)
   const lap = (((age + lapStart(boat)) / route.seconds) % 1 + 1) % 1
-  const ease = (p: number): number => eased(EASE_IN_OUT, p)
+  // The eased progress over a share `p` of a swing that takes `share` of the
+  // lap, along the straight stretches the scene draws it in.
+  const ease = (p: number, share = 0.5): number => {
+    const pieces = Math.round(SWING_PIECES * share)
+    const i = Math.min(pieces - 1, Math.floor(p * pieces))
+    const a = eased(EASE_IN_OUT, i / pieces)
+    return a + (eased(EASE_IN_OUT, (i + 1) / pieces) - a) * (p * pieces - i)
+  }
   const dx = lap < 0.5 ? -1 + 2 * ease(lap / 0.5) : 1 - 2 * ease((lap - 0.5) / 0.5)
   if (route.drift !== undefined) {
     // Its drift mirrors the scene's `oy2`: from the far side to the near and
@@ -295,7 +314,7 @@ export function lapAt(boat: Boat, age: number): Fix {
     const dy = d < 0.5 ? -1 + 2 * ease(d / 0.5) : 1 - 2 * ease((d - 0.5) / 0.5)
     return { x: route.cx + route.rx * dx, y: route.cy + route.ry * dy - route.tilt * dx, heading: lap < 0.5 ? 1 : -1 }
   }
-  const dy = lap < 0.25 ? -ease(lap / 0.25) : lap < 0.75 ? -1 + 2 * ease((lap - 0.25) / 0.5) : 1 - ease((lap - 0.75) / 0.25)
+  const dy = lap < 0.25 ? -ease(lap / 0.25, 0.25) : lap < 0.75 ? -1 + 2 * ease((lap - 0.25) / 0.5) : 1 - ease((lap - 0.75) / 0.25, 0.25)
   return { x: route.cx + route.rx * dx, y: route.cy + route.ry * dy, heading: lap < 0.5 ? 1 : -1 }
 }
 

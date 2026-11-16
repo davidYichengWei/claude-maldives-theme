@@ -1,4 +1,4 @@
-import { scene, VISIT_SECONDS } from '../hooks/scene'
+import { drawing, scene, VISIT_SECONDS } from '../hooks/scene'
 import type { SceneState, Visit, VisitKind } from '../hooks/scene'
 import { AT_HOME, DECK, DOCK, JETTY, embark, planOf } from '../hooks/voyage'
 import type { Voyage } from '../hooks/voyage'
@@ -57,6 +57,30 @@ const lint = (svg: string, what: string): void => {
   for (const construct of constructsOf(svg)) if (!PROVEN.has(construct)) bad.push(`${what} uses ${construct}, never seen working in the app (verify/constructs.ts)`)
 
 }
+// What in a scene animates off its clock (hooks/clock.ts): a shorthand or a
+// keyframe that eases smoothly, or a trip group the clock gave no steps. A
+// scene drawn lean leaves its trips and runs off the clock on purpose.
+let lean = 0
+let drawnCount = 0
+const clockLint = (drawn: { source: string; isLean: boolean }, what: string): void => {
+  drawnCount++
+  if (drawn.isLean) {
+    lean++
+    return
+  }
+  const svg = drawn.source
+  const off = (timing: string): boolean => !/steps\(|step-end|step-start/.test(timing)
+  for (const m of svg.matchAll(/animation:([^;}"]*)/g)) {
+    for (const item of (m[1] ?? '').split(/,(?![^(]*\))/)) if (off(item)) bad.push(`${what} animates off the clock: ${item.trim()}`)
+  }
+  for (const block of svg.match(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*\s*\}/g) ?? []) {
+    for (const m of block.matchAll(/animation-timing-function:([^;}]*)/g)) if (off(m[1] ?? '')) bad.push(`${what} keyframes off the clock: ${block.slice(0, 60)}… ${m[1]}`)
+  }
+  for (const m of svg.matchAll(/<[^>]*\sclass="way[^"]*"[^>]*>/g)) {
+    if (/animation-name:/.test(m[0]) && !/animation-timing-function:steps/.test(m[0])) bad.push(`${what} trip off the clock: ${m[0].slice(0, 120)}`)
+  }
+
+}
 // The scenes are shared out over FUZZ_JOBS processes (default: half the
 // CPUs, at most 16). Every process walks the whole trip and draws the same
 // random states, so each scene is the same whichever process builds it; a
@@ -64,7 +88,7 @@ const lint = (svg: string, what: string): void => {
 const SHARD = process.env.FUZZ_SHARD
 if (SHARD === undefined) {
   const jobs = Math.max(1, Number(process.env.FUZZ_JOBS) || Math.min(16, Math.floor(cpus().length / 2)))
-  const runs = Array.from({ length: jobs }, (_, k) => new Promise<{ bad: string[]; slowest: number; largest: number }>((done, fail) => {
+  const runs = Array.from({ length: jobs }, (_, k) => new Promise<{ bad: string[]; slowest: number; largest: number; lean: number; drawn: number }>((done, fail) => {
     const child = spawn(process.execPath, [process.argv[1] ?? ''], { env: { ...process.env, FUZZ_SHARD: `${k}/${jobs}` }, stdio: ['ignore', 'pipe', 'inherit'] })
     let out = ''
     child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString() })
@@ -72,7 +96,7 @@ if (SHARD === undefined) {
   }))
   Promise.all(runs).then(parts => {
     const all = parts.flatMap(p => p.bad)
-    console.log('bad', all.length, all.slice(0, 8).join('\n'), '| slowest build ms', Math.max(...parts.map(p => p.slowest)), '| largest', Math.max(...parts.map(p => p.largest)))
+    console.log('bad', all.length, all.slice(0, 8).join('\n'), '| slowest build ms', Math.max(...parts.map(p => p.slowest)), '| largest', Math.max(...parts.map(p => p.largest)), '| drawn lean', parts.reduce((n, p) => n + p.lean, 0), 'of', parts.reduce((n, p) => n + p.drawn, 0))
     const exact = embark({ ...AT_HOME }, 'fetch', 1794672780488, false)
     const t0 = Date.now(); const s = scene(base(exact, 1794672780488 + 400, 'working')); console.log('exact build ms', Date.now() - t0, s.length)
     writeFileSync('exact.svg', s)
@@ -96,12 +120,17 @@ for (let i = 0; i < 400; i++) {
     if (i % shards !== shard) continue
     const t0 = Date.now()
     let svg = ''
-    try { svg = scene(base(v, now + Math.max(0, dt) * 1000, mood)) } catch (e) { bad.push(`${i} ${phase} dt ${dt} threw ${(e as Error).stack?.slice(0, 300)}`); continue }
+    let drawn: ReturnType<typeof drawing>
+    try { drawn = drawing(base(v, now + Math.max(0, dt) * 1000, mood)) } catch (e) { bad.push(`${i} ${phase} dt ${dt} threw ${(e as Error).stack?.slice(0, 300)}`); continue }
+    svg = drawn.source
     slowest = Math.max(slowest, Date.now() - t0)
     lint(svg, `${i} ${phase} dt ${dt.toFixed(1)}`)
-    lint(scene(other), `${i} ${phase} dt ${dt.toFixed(1)} varied`)
+    clockLint(drawn, `${i} ${phase} dt ${dt.toFixed(1)}`)
+    const busy = drawing(other)
+    lint(busy.source, `${i} ${phase} dt ${dt.toFixed(1)} varied`)
+    clockLint(busy, `${i} ${phase} dt ${dt.toFixed(1)} varied`)
     if (i === 3 && dt === 0.4) writeFileSync('fuzz-sample.svg', svg)
   }
 }
-process.stdout.write(JSON.stringify({ bad, slowest, largest }))
+process.stdout.write(JSON.stringify({ bad, slowest, largest, lean, drawn: drawnCount }))
 }

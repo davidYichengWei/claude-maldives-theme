@@ -79,8 +79,10 @@ claude plugin install maldives@claude-maldives-theme
 
 | Script | What it checks |
 | --- | --- |
-| `npm run fuzz` | Hundreds of random trips build valid CSS |
+| `npm run fuzz` | Hundreds of random trips build valid CSS, every animation on the scene's 60-a-second clock |
 | `npm run size` | The scene stays under the size the app accepts |
+| `node verify/grid.cjs <scene.svg>` | Lists any animation that changes off the clock, and what it costs |
+| `node verify/perf.cjs <scene.svg>` | The CPU Chromium spends keeping a scene playing |
 | `npm run states` | Every state renders; boat routes keep clear of the island and the jetty |
 | `npm run frames` | Renders still frames of a trip and of Clawd's day to PNG |
 | `npm run fleet`, `npm run sides` | Boats come and go, and alternate the edge they use |

@@ -35,6 +35,50 @@ nothing that uses it.
 
 All commands run from `dev/` in this repository.
 
+## The clock
+
+The app draws the backdrop afresh whenever anything in it has changed, at
+about the same cost however little changed, so one animation easing smoothly
+keeps the display busy at its full rate (that was the theme's heat, worst
+on a 120 Hz display).
+`hooks/clock.ts` puts every animation on one clock of 60 ticks a second:
+`onClock` rewrites each finished scene so that every duration, delay, phase
+variable and keyframe falls on a tick and every moving stretch steps once a
+tick (`steps()`), with easing drawn out as stops along its curve. The frames
+between ticks are then left alone: the main layers repaint at most 60 times
+a second, however fast the display runs. What it cannot save is the browser's own per-frame upkeep of
+running animations (style recalculation still runs every frame).
+
+So that it can, write animations this way:
+
+- A looping animation's duration must be a whole number of ticks (a
+  multiple of 1/60 s; `beat(.47, 1)`, not `.47`): the clock leaves one that is
+  not as written, smooth, since rounding it would drift from what the TS
+  side works out from the same duration. One played once may be rounded.
+- Give each animation its whole `animation` shorthand with a literal
+  duration. The clock reads shorthands, and the `animation-name` +
+  inherited `--e` of `.way` / `.cut` trips; it cannot see an
+  `animation-duration` or `animation-name` override on a class or element.
+- A duration held in a variable (`var(--u)`) gives every element its own, so
+  the keyframes cannot be laid out in ticks: draw them as even stretches
+  (`evenly()` in `clock.ts`), time them `steps(var(--k))` with `--k` the
+  ticks of one stretch, and keep the duration a whole number of stretches
+  (`sweepOf`, `driftOf`, `SWEEP_TICKS` in `fleet.ts`).
+- A busy scene that would come out too long is drawn lean first (trips and
+  long runs smooth, everything else on the clock), and as a last resort off
+  the clock entirely: see `drawing()`.
+
+Checks: `npm run fuzz` fails on anything a non-lean scene animates off the
+clock and counts the scenes drawn lean. `node verify/grid.cjs <scene.svg>...`
+lists, per animation, every change a scene makes off a tick and the frames
+a second it costs, in Chromium, with the `<use>` copies flattened.
+`node verify/perf.cjs [--size WxH] <scene.svg>...` measures the CPU all of
+Chromium spends keeping a scene playing; build the scenes it measures with
+`verify/perf-scenes.ts` (idle by day and night, working with boats out) and
+`verify/busiest.ts` (the longest scenes the theme can draw). Headless
+Chromium rasterizes on the CPU, so its numbers rank costs; they are not the
+app's own.
+
 ## Launch
 
 Nothing to launch: Chromium is started per run by `verify/film.cjs`.

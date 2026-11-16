@@ -25,14 +25,19 @@ export type Boat = {
 // flat ellipse. A dinghy or a fishing boat roams a wide stretch: it sweeps
 // from side to side across it, coming about at each end, and drifts between
 // the far and the near side of it on a longer, unrelated beat, so its course
-// does not visibly repeat. A boat whose water reaches out to sea comes in
-// from the horizon and goes back out to it; the rest come and go by the
-// edges of the view.
+// does not visibly repeat. Some stretches lie aslant, further out at one end
+// than the other, so a boat sweeping across them also heads out to sea or
+// in to shore. A boat whose water reaches out to sea comes in from the
+// horizon and goes back out to it; the rest come and go by the edges of the
+// view.
 export type Route = {
   cx: number
   cy: number
   rx: number
   ry: number
+  // How much further out the right end of a sweep lies than its middle (the
+  // left end as much nearer); none for an ellipse.
+  tilt: number
   // One sweep there and back.
   seconds: number
   // One drift out and back; none for an ellipse.
@@ -64,33 +69,34 @@ function sizeAt(kind: BoatKind, y: number): number {
   return Math.round(SIZE[kind] * depthScale(y) * 1000) / 1000
 }
 
-function ellipse(kind: BoatKind, cx: number, cy: number, rx: number, ry: number, seconds: number): Route {
-  return { cx, cy, rx, ry, seconds, drift: undefined, driftFrom: 0, scale: sizeAt(kind, cy), isFar: false }
-}
-
-// Water from `left` to `right` and from `far` to `near`, swept in `seconds`
-// and drifted across in `drift`.
-function roam(kind: BoatKind, [left, right]: [number, number], [far, near]: [number, number], seconds: number, drift: number, driftFrom: number): Route {
+// Water from `left` to `right` and from `far` to `near` (at the middle of
+// the sweep), swept in `seconds` and drifted across in `drift`, its right
+// end `tilt` further out.
+function roam(kind: BoatKind, [left, right]: [number, number], [far, near]: [number, number], seconds: number, drift: number, driftFrom: number, tilt = 0): Route {
   const cy = (far + near) / 2
-  return { cx: (left + right) / 2, cy, rx: (right - left) / 2, ry: (near - far) / 2, seconds, drift, driftFrom, scale: sizeAt(kind, cy), isFar: far < 600 }
+  return { cx: (left + right) / 2, cy, rx: (right - left) / 2, ry: (near - far) / 2, tilt, seconds, drift, driftFrom, scale: sizeAt(kind, cy), isFar: far - Math.abs(tilt) < 600 }
 }
 
-// A boat's size where it is on its water. On a roam the scene sizes it on a
-// straight line between its sizes at the far and the near side, which is
-// within a few hundredths of its size by depth. Off that water, on its way to
-// or from the horizon, it is sized by depth alone: the line, carried on past
-// the far side, would leave it far too big.
-export function sizeOn(boat: Boat, y: number): number {
+// A boat's size where it is on its water. On a roam the scene sizes it by
+// two factors, each carried evenly from one side of the water to the other
+// as the boat goes: one for how far out it has drifted and, on a slanting
+// stretch, one for how far across it is. That is within a few hundredths of
+// its size by depth. Off that water, on its way to or from the horizon, it
+// is sized by depth alone: the factors, carried on past the far side, would
+// leave it far too big.
+export function sizeOn(boat: Boat, at: Point): number {
   const r = routeOf(boat)
   if (r.drift === undefined) {
     return r.scale
   }
-  const [top, bottom] = [r.cy - r.ry, r.cy + r.ry]
-  if (y < top || y > bottom) {
-    return SIZE[boat.kind] * depthScale(y)
+  const dx = (at.x - r.cx) / (r.rx || 1)
+  const dy = (at.y - r.cy + r.tilt * dx) / (r.ry || 1)
+  if (Math.abs(dx) > 1.001 || Math.abs(dy) > 1.001) {
+    return SIZE[boat.kind] * depthScale(at.y)
   }
-  const [far, near] = [sizeAt(boat.kind, top), sizeAt(boat.kind, bottom)]
-  return far + ((near - far) * (y - top)) / (2 * r.ry || 1)
+  const [far, near] = sizesOf(boat)
+  const [left, right] = acrossOf(boat)
+  return (far + ((near - far) * (dy + 1)) / 2) * (left + ((right - left) * (dx + 1)) / 2)
 }
 
 // The ends of a roam's sizes, far side first.
@@ -99,25 +105,35 @@ export function sizesOf(boat: Boat): [number, number] {
   return [sizeAt(boat.kind, r.cy - r.ry), sizeAt(boat.kind, r.cy + r.ry)]
 }
 
+// How much a slanting roam scales a boat at its left and right ends, as
+// shares of its size at the middle.
+export function acrossOf(boat: Boat): [number, number] {
+  const r = routeOf(boat)
+  const k = (y: number): number => Math.round((depthScale(y) / depthScale(r.cy)) * 1000) / 1000
+  return [k(r.cy + r.tilt), k(r.cy - r.tilt)]
+}
+
 // The water of each kind's boats. Behind the water villas, left of x 640, a
 // boat would sail through the pier, so the water there starts nearer; by the
 // island, right of x 1090, only the water in front of the island is open.
-// The sweeps and drifts take lengths with no common beat.
+// The lead boat's stretch runs aslant from the near water off the villas out
+// to the far water beyond them. The sweeps and drifts take lengths with no
+// common beat.
 export const ROUTES: Record<BoatKind, readonly Route[]> = {
-  lead: [ellipse('lead', 690, 745, 150, 8, 100), ellipse('lead', 680, 760, 140, 7, 92)],
+  lead: [roam('lead', [260, 1050], [635, 785], 170, 113, 0.475, 65)],
   crew: [
-    roam('crew', [170, 610], [660, 860], 86, 137, 0.1),
+    roam('crew', [120, 700], [690, 860], 92, 137, 0.1),
     roam('crew', [670, 1050], [545, 800], 94, 151, 0),
-    roam('crew', [740, 1480], [800, 880], 118, 97, 0.6),
-    roam('crew', [660, 1060], [560, 720], 82, 129, 0.35),
-    roam('crew', [300, 990], [700, 880], 106, 163, 0.8),
+    roam('crew', [560, 1480], [805, 880], 128, 97, 0.6),
+    roam('crew', [320, 1060], [650, 760], 98, 129, 0.35, 70),
+    roam('crew', [240, 1000], [745, 865], 112, 163, 0.8, -45),
   ],
   shell: [
     roam('shell', [1150, 1520], [805, 882], 98, 121, 0.3),
-    roam('shell', [670, 1050], [560, 760], 102, 143, 0.55),
-    roam('shell', [140, 620], [690, 880], 114, 131, 0.9),
+    roam('shell', [560, 1060], [640, 770], 110, 143, 0.55, 60),
+    roam('shell', [100, 640], [700, 880], 120, 131, 0.9),
     roam('shell', [700, 1050], [545, 680], 90, 117, 0.15),
-    roam('shell', [560, 1300], [820, 885], 124, 109, 0.45),
+    roam('shell', [480, 1340], [820, 885], 132, 109, 0.45),
   ],
 }
 
@@ -156,7 +172,7 @@ export const LEAVE_X: Curve = [0.45, 0, 0.7, 0.75]
 const EASE_IN_OUT: Curve = [0.42, 0, 0.58, 1]
 
 const VIEW_W = 1600
-const OFF = 90
+const OFF = 140
 
 // The lanes the edges are crossed on. On the left a boat keeps low enough to
 // clear the villas' pier. On the right it holds the lane behind the island or
@@ -277,7 +293,7 @@ export function lapAt(boat: Boat, age: number): Fix {
     // back, eased at each.
     const d = ((((age + lapStart(boat)) / route.drift + route.driftFrom) % 1) + 1) % 1
     const dy = d < 0.5 ? -1 + 2 * ease(d / 0.5) : 1 - 2 * ease((d - 0.5) / 0.5)
-    return { x: route.cx + route.rx * dx, y: route.cy + route.ry * dy, heading: lap < 0.5 ? 1 : -1 }
+    return { x: route.cx + route.rx * dx, y: route.cy + route.ry * dy - route.tilt * dx, heading: lap < 0.5 ? 1 : -1 }
   }
   const dy = lap < 0.25 ? -ease(lap / 0.25) : lap < 0.75 ? -1 + 2 * ease((lap - 0.25) / 0.5) : 1 - ease((lap - 0.75) / 0.25)
   return { x: route.cx + route.rx * dx, y: route.cy + route.ry * dy, heading: lap < 0.5 ? 1 : -1 }

@@ -8,8 +8,9 @@
   and sits up and turns to the front again to get off), sipping at the bar, standing by the fire.
 - `/maldives island <fish|nap|sun|sip|fire|tour>` starts a day with that
   pastime first (`tour` runs them all).
-- A crab wanders the wet sand in front of the lounger and the bar all the
-  time: sideways scuttles between spots, rests, an occasional claw wave. Its
+- A small crab, drawn like the hermit crab (flat shell, dot eyes on stalks,
+  about 20 px across), wanders the wet sand in front of the lounger and the
+  bar all the time, its shadow going with it: sideways scuttles between spots, rests, an occasional claw wave. Its
   round is one fixed irregular schedule (about 90 s) phased from the wall
   clock, so a redraw finds it where it was. It is drawn after Clawd and the
   boats, being nearer than either can be where it walks.
@@ -33,5 +34,5 @@ pastime (they last 14 to 140 s). Follow with `turn` to check getting up.
   then the shrubs that stand in front of their trunks. The palm crown, the
   shrub and the grass tuft are each drawn once in the defs and cloned; the
   crab's colours stay off the mascot's clay fill, which the probe tracks.
-- Nothing checks the crab's motion; look at a filmed strip
+- The layer audit holds the crab's order and jumps, not how its legs move; look at a filmed strip
   (`--film --crop 1430,690,200,60`).

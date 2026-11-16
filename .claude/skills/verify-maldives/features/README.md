@@ -13,4 +13,4 @@ sub-features, how a person gets to it in the app, how to drive it with
 | [fleet.md](fleet.md) | crew and shell boats, edges and wakes |
 | [fireworks.md](fireworks.md) | fireworks on a push or MR |
 | [day-night.md](day-night.md) | light and dark schemes |
-| [wildlife.md](wildlife.md) | whale shark, baby shark and shoals, heron, hermit crab, night glow |
+| [wildlife.md](wildlife.md) | reef, whale shark, shoals, heron, hermit crab, night glow |

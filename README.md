@@ -8,13 +8,15 @@ An animated Maldives lagoon behind your conversations in the Claude desktop app.
 
 ## What it does
 
-- **While Claude works**, a sailboat fetches Clawd from the island jetty and sails a circuit of the lagoon with Clawd on deck.
+- **While Claude works**, a sailboat fetches Clawd from the island jetty and roams the lagoon with Clawd on deck, from the near water off the villas out to the far water beyond them. On deck Clawd fishes over the side, looks out through a spyglass, hums to itself and hops, waves and leans in between.
 - **When Claude waits on you** (a permission, a question or a plan to approve), the boat flies a flag and its lamp lights up, and Clawd waves.
 - **When the turn is over**, the boat brings Clawd back to the jetty and sails off. Clawd walks home and lives its own day on the island: it fishes off the jetty, naps in the hammock, sunbathes on the lounger, has a drink at the bar and warms up by the fire, in an order that is never quite the same.
 - **Background shells and subagents** show up as fishing boats and dinghies on the water.
 - **Shipping work** (`git push`, `gh pr create`, or a tool that opens a pull or merge request) sets off fireworks.
 - **Compacting** the conversation draws a slow whirlpool, and sending a prompt sets the fish leaping.
-- **Wildlife** comes and goes on its own: dolphins, a turtle, a manta, and now and then a whale shark gliding far out under the lagoon. Two baby blacktip reef sharks circle the water villas and send the little shoals there darting off as they pass; a grey heron wades, fishes and drinks in the shallows off the beach and on the sand behind the palms, circling above the water villas a few times as it flies between them; a crab and a hermit crab wander the sand.
+- **A coral reef** runs along the near shallows, full of life: clownfish in its anemones, a moray eel in the rocks, an octopus, a stingray, angelfish, butterflyfish, a parrotfish, a pufferfish, and schools of blue tangs, humbug damsels and clownfish swimming to and fro along it. Further out, coral heads dot the lagoon floor under slanting shafts of light, and now and then an eagle ray glides by.
+- **Wildlife** comes and goes on its own: dolphins, a turtle, a manta, schools of bluestriped snappers and bannerfish, and now and then a whale shark gliding far out under the lagoon. A grey heron wades, fishes and drinks in the shallows off the beach and on the sand behind the palms, circling above the water villas a few times as it flies between them; a crab and a hermit crab wander the sand.
+- **The horizon** shows the atoll in two groups with open sea between them: a large palm island sharing its lagoon with a sandbank and a resort's row of overwater villas, whose windows light up at night, and further right a middling island with a small one beside it. Every island sits on white sand that fades into a turquoise halo of shallows.
 - The scene follows the app's light or dark appearance: sun and clouds by day; moon, stars, lit villas and glowing plankton along the shore and in the boats' wakes by night.
 
 The backdrop is drawn by the Claude desktop app (and the mobile app). In a terminal the theme sets its colours only.
@@ -79,7 +81,7 @@ claude plugin install maldives@claude-maldives-theme
 
 ## 中文说明
 
-一个给 Claude 桌面 App 用的马尔代夫主题：背景是会动的泻湖，跟着 Claude 的状态变化。Claude 工作时，帆船把 Clawd 从岛上的码头接走，载着它在泻湖里巡游；需要你确认时，船上挂旗、亮灯；工作结束后，船把 Clawd 送回码头，它在岛上过自己的一天，钓鱼、睡吊床、晒太阳、去吧台喝东西、烤火，每天的安排都不一样。安装和命令见上文。
+一个给 Claude 桌面 App 用的马尔代夫主题：背景是会动的泻湖，跟着 Claude 的状态变化。Claude 工作时，帆船把 Clawd 从岛上的码头接走，载着它在泻湖里四处巡游，从水屋前的近海一直开到远处的海面；Clawd 在船上会钓鱼、举望远镜看风景、哼歌；需要你确认时，船上挂旗、亮灯；工作结束后，船把 Clawd 送回码头，它在岛上过自己的一天，钓鱼、睡吊床、晒太阳、去吧台喝东西、烤火，每天的安排都不一样。安装和命令见上文。
 
 ## License
 

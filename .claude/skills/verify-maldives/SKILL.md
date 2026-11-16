@@ -14,6 +14,22 @@ them. This skill plays a list of timed events through the plugin's real
 then renders them in Chromium with every CSS animation paused and seeked, and
 checks the frames and the seams between scenes.
 
+One kind of bug it cannot see: the desktop app draws the scene in a frame of
+its own, and some constructs Chromium plays happily stop every animation
+there, with no error anywhere (`d:path()` keyframes, an aspect-ratio media
+rule, one of an `feColorMatrix` filter or a `.a>g>g` selector, removed
+together, and class rules filling shapes with colours inside a `<use>` target
+whose `<use>` itself gets `fill` from a rule). So a scene may use only the constructs in
+`verify/constructs.ts` `PROVEN`, which `npm run fuzz` checks across every
+scheme and state. A construct is not only syntax: the fingerprint also
+records an attribute that a class or id rule overrides (`override:<prop>`)
+and a class rule painting a shape under a `<use>` that a rule paints the same
+way (`under-styled-use:<prop>`), which only the dark scheme's rules may bring
+in. A scheme the person rarely
+uses counts as unproven until they have watched it move. A new construct goes on that list only after the person
+has looked at a scene with it in the app and seen it move; until then, sync
+nothing that uses it.
+
 All commands run from `dev/` in this repository.
 
 ## Launch
@@ -39,7 +55,7 @@ verify/doctor.sh
 
 Read-only. Checks node, dev dependencies, that Chromium launches and renders,
 that the plugin type-checks, the busiest scene's size against the plain-redraw
-valve (127000) and the app limit (131072), and whether the hot-reloading copy
+valve (131000) and the app limit (131072), and whether the hot-reloading copy
 under `~/.claude/dev-mods/*/maldives` matches the repo. Each FAIL line says
 what to run.
 
@@ -144,11 +160,13 @@ The app reloads the mod when the session's turn ends.
 - `node verify/layers.cjs sweep <scene.svg> <out-dir> [from] [to] [every]`:
   the layer audit over one scene, every animation seeked through the
   wildlife's long rounds (0-1200 s at 0.5 s catches them all). It finds
-  every moving thing by its markup, gives it a layer (sky, surface, under
-  the water) and a depth (where it meets the water or ground), and flags
+  every moving thing by its markup, gives it a layer (sky, surface, glint
+  for the twinkles on the water, under the water) and a depth (where it meets the water or ground), and flags
   wrong paint order, two things at one depth running through each other,
   see-through creatures mixing colours, and jumps; each pair is confirmed
-  by painting the two alone and counting shared pixels. `layers.md` lists
+  by painting the two alone and counting shared pixels (with the targets
+  of any `<use>` in them kept visible: hiding those left every clone, the
+  small boats' hulls among them, at zero pixels). `layers.md` lists
   the faults with crops. `node verify/layers.cjs film <out-dir> <dir>...`
   does the same over the scenes of `run.sh` films, across their redraws.
   Work is shared over `LAYERS_JOBS` browsers (default half the CPUs, at most
@@ -157,8 +175,10 @@ The app reloads the mod when the session's turn ends.
   `census()` (and a new swimmer lane to `LANES`), then check with a census at
   one moment that it is listed: an object with no shapes found is skipped
   without a word (a bare `<use>` and a class matched by prefix both were).
-- `npm run fuzz`: every pastime and trip interruption at many instants, for
-  scene build errors and timing; `bad 0` is clean.
+- `npm run fuzz`: every pastime and trip interruption at many instants, in
+  every scheme with boats, flags, fireworks and compacting drawn at random,
+  for scene build errors, timing and any construct not yet proven in the
+  app; `bad 0` is clean. Run it before every sync to the live copy.
 - `npm run size`: scene sizes for the quiet and the busiest states.
 - `npm run fleet`, `npm run sides`: boat scheduling and which edge each boat
   enters and leaves by.

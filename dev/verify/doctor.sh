@@ -31,8 +31,8 @@ if out=$(npm run -s size 2>&1); then
   busiest=$(echo "$out" | sed -n 's/.*busiest fetch \([0-9]*\) busiest land \([0-9]*\).*/\1 \2/p')
   top=$(echo "$busiest" | tr ' ' '\n' | sort -n | tail -1)
   if [ -z "$top" ] || [ "$top" -gt 131072 ]; then no "busiest scene ${top:-?} chars is over the app limit 131072" "trim the scene"
-  elif [ "$top" -gt 127000 ]; then ok "busiest scene $top chars, under the app limit 131072 (drawn plainly: over 127000)"
-  else ok "busiest scene $top chars (plain redraw above 127000, app limit 131072)"; fi
+  elif [ "$top" -gt 131000 ]; then ok "busiest scene $top chars, under the app limit 131072 (drawn plainly: over 131000)"
+  else ok "busiest scene $top chars (plain redraw above 131000, app limit 131072)"; fi
 else
   no "scene does not build: $(echo "$out" | head -1)" "npm run size, and fix what it reports"
 fi

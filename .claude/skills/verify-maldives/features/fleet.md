@@ -14,6 +14,9 @@
   its way in and out alike.
 - A boat comes back in by the edge it last left by; wakes show only by the
   edges.
+- Some roams lie aslant (`tilt`): the sweep carries the boat out to sea at
+  one end and in at the other, and a second `bv`/`bz` pair on the sweep's
+  clock moves and sizes it for that; `sizeOn` and `lapAt` mirror it.
 - Boats, the lead boat among them, are painted far to near; one rounding
   the island behind it is drawn on the island's far side only while it is
   level with the island.
@@ -51,13 +54,17 @@ events; `npm run fleet` and `npm run sides` for the schedule alone.
   at the redraw.
 - Roaming boats keep changing places in depth, so a scene works out their
   order for 45 s ahead (20 s in a plain scene) and `paint` draws it again
-  5 s before that runs out (`renew`). Only boats close enough to overlap
+  5 s before that runs out (`renew`); the lead boat out on its roam counts
+  as roaming. Only boats close enough to overlap
   (90 px across, 70 px in depth; 130 and 110 for the lead boat) trade
   places; the rest keep their order, which keeps the scene small.
 - A way in or out is keyed at times picked by thinning dense samples to a
   1 px tolerance (3.5 px in a plain scene), so two scenes key it alike and a
   redraw takes a boat up where the last left it. Fixed even legs differed
   by up to 8 px between a busy scene and a quiet one on a steep slant.
+- `film.cjs` measures a boat without the signal's glow or its wake: both lie
+  on the water, and a boat further off sitting on the lead boat's glow is
+  painted right, not under it.
 - Fleet hulls and all bow-on views are `<use>` clones of the defs, which
   the probe cannot see into; the lead boat's side view is drawn inline so
   it can be measured.

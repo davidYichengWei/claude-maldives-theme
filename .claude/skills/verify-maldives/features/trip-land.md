@@ -7,8 +7,11 @@
   turn.
 - Once Clawd is off the jetty the boat leaves by an edge, with a wake only
   near the edge.
-- A rider in the middle of an antic (lean, glance, squat) finishes it and
-  then rests.
+- A rider in the middle of an antic (lean, glance, squat) or a pastime
+  (fishing, spyglass, humming) finishes it and then rests. The run it plays
+  out is a share of the 210 s loop, kept to four places: rounded to one, a
+  hop half a second from its end stopped six seconds early, and the mascot
+  dropped its pose at the redraw.
 
 ## How to get to it (user POV)
 

@@ -5,7 +5,7 @@ import type { Mood, Need } from '../types'
 import { berthAt, muster } from './fleet'
 import type { Boat } from './fleet'
 import { makeColors } from './make-colors.js'
-import { FIREWORKS_MS, UNFLAGGED, UNPAINTED, hoist, paint, signalOf } from './paint'
+import { FIREWORKS_MS, KEY_PARTS, UNFLAGGED, UNPAINTED, hoist, paint, signalOf } from './paint'
 import type { Flag } from './paint'
 import { AT_HOME, DRILLS, embark, planOf } from './voyage'
 import type { Voyage } from './voyage'
@@ -191,7 +191,17 @@ let tally = { asks: 0, builds: 0 }
 // The latest asks for the backdrop: when, whether the scene was drawn anew,
 // and how old the scene handed back was. A frame the app reloads with an old
 // scene starts every loop where it stood when that scene was drawn.
-let recent: { at: number; isNew: boolean; age: number }[] = []
+// The latest asks for the backdrop and agent events, for the debug listing.
+let recent: { at: number; what: string }[] = []
+async function note($: EngineInterface, what: string): Promise<void> {
+  recent = [...recent, { at: await $.clock.now(), what }].slice(-24)
+}
+// What made a new drawing, by the parts of the redraw key that changed.
+function changedIn(before: string, after: string): string {
+  const [was, is] = [before.split('|'), after.split('|')]
+  const parts = KEY_PARTS.filter((_, i) => was[i] !== is[i])
+  return parts.length > 0 ? parts.join(', ') : 'refresh'
+}
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -222,7 +232,7 @@ export const register: Register = on => {
         `plan: boards ${plan.boards.toFixed(1)}, lands ${plan.lands.toFixed(1)}, settled ${plan.settled.toFixed(1)}, gone ${plan.gone.toFixed(1)}`,
         `asked ${tally.asks} times, drawn ${tally.builds} times, last ${((now - drawn.built) / 1000).toFixed(1)}s ago, ${drawn.source.length} chars`,
         `key ${drawn.key}`,
-        ...recent.map(a => `asked ${((now - a.at) / 1000).toFixed(1)}s ago: ${a.isNew ? 'drawn anew' : `kept, drawn ${(a.age / 1000).toFixed(1)}s before`}`),
+        ...recent.map(a => `${((now - a.at) / 1000).toFixed(2)}s ago: ${a.what}`),
       ]
       return { text: lines.join('\n') }
     }
@@ -287,6 +297,7 @@ export const register: Register = on => {
   // starts; a prompt typed over a running turn changes no mood, so it asks for
   // the redraw itself.
   on('prompt.submit', async ($, e, next) => {
+    await note($, `prompt sent${e.isMeta === true ? ' (meta)' : ''}`)
     if (e.isMeta !== true) {
       leapUntil = (await $.clock.now()) + LEAP_MS
       const current = await read($, mood)
@@ -298,6 +309,7 @@ export const register: Register = on => {
   })
 
   on('turn.start', async ($, e, next) => {
+    await note($, e.agentId === undefined ? 'turn started' : 'subagent turn started')
     if (e.agentId === undefined) {
       await feel($, 'working')
     } else {
@@ -309,6 +321,7 @@ export const register: Register = on => {
   // A subagent started in the background outlives the main turn, so the main
   // turn's end leaves the count alone.
   on('turn.complete', async ($, e, next) => {
+    await note($, `${e.agentId === undefined ? 'turn' : 'subagent turn'} ended (${e.reason})`)
     if (e.agentId !== undefined) {
       await count($, 'crew', n => Math.max(0, n - 1))
     } else {
@@ -384,6 +397,7 @@ export const register: Register = on => {
     const now = await $.clock.now()
     flag = hoist(flag, signalOf(current, kind), now)
     const before = drawn.built
+    const keyBefore = drawn.key
     drawn = paint(
       drawn,
       {
@@ -400,7 +414,7 @@ export const register: Register = on => {
       now,
     )
     tally = { asks: tally.asks + 1, builds: tally.builds + (drawn.built !== before ? 1 : 0) }
-    recent = [...recent, { at: now, isNew: drawn.built !== before, age: now - drawn.built }].slice(-12)
+    await note($, drawn.built !== before ? `asked, drawn anew (${changedIn(keyBefore, drawn.key)})` : `asked, kept the drawing from ${((now - drawn.built) / 1000).toFixed(1)}s before`)
     return (
       <Svg
         source={drawn.source}

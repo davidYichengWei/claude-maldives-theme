@@ -72,8 +72,10 @@ function probe({ clay, hull }) {
     .map(el => {
       const o = seen(el)
       // Only what shows: a glow kept hidden or a wake faded out still has a
-      // box, which would make the boat seem wider than it is.
-      const shown = [...el.querySelectorAll('path, ellipse, circle, rect, line, polygon, use')].filter(leaf => seen(leaf) > 0.05).map(leaf => leaf.getBoundingClientRect()).filter(q => q.width + q.height > 0)
+      // box, which would make the boat seem wider than it is. The signal's
+      // glow and the wake lie on the water, and a boat further off may sit on
+      // them: they are not the boat.
+      const shown = [...el.querySelectorAll('path, ellipse, circle, rect, line, polygon, use')].filter(leaf => seen(leaf) > 0.05 && leaf.closest('.hO, .wk') === null).map(leaf => leaf.getBoundingClientRect()).filter(q => q.width + q.height > 0)
       const r = shown.length === 0 ? el.getBoundingClientRect() : { left: Math.min(...shown.map(q => q.left)), top: Math.min(...shown.map(q => q.top)), right: Math.max(...shown.map(q => q.right)), bottom: Math.max(...shown.map(q => q.bottom)) }
       r.width = r.right - r.left
       r.height = r.bottom - r.top
@@ -202,13 +204,19 @@ function stepFaults(a, b, dt) {
     // inside a copy's shadow tree are not the document's, so they cannot be
     // seeked, and nothing in a copy can be measured: each copy of a boat is
     // swapped for a plain clone of it, which draws the same.
+    // A copy may hold copies of its own (the mascot on the lead boat's deck),
+    // so it goes round until none is left.
     await page.evaluate(() => {
-      for (const use of [...document.querySelectorAll('use')]) {
-        const id = (use.getAttribute('href') ?? '').slice(1)
-        if (!/^v\d+$/.test(id)) continue
-        const clone = document.getElementById(id).cloneNode(true)
-        clone.removeAttribute('id')
-        use.replaceWith(clone)
+      for (let left = true; left; ) {
+        left = false
+        for (const use of [...document.querySelectorAll('use')]) {
+          const id = (use.getAttribute('href') ?? '').slice(1)
+          if (!/^v\d+$/.test(id)) continue
+          const clone = document.getElementById(id).cloneNode(true)
+          clone.removeAttribute('id')
+          use.replaceWith(clone)
+          left = true
+        }
       }
     })
     loaded = i

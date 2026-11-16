@@ -16,10 +16,12 @@
 // time and run no faster than a single page.
 //
 // Every object is found by markup the scene already has (no markup is added
-// for the audit). Its layer is sky, surface or under (seen through the
-// water); its depth is the screen height of where it meets the water or the
+// for the audit). Its layer is sky, surface, glint (a twinkle on the water)
+// or under (seen through the water); its depth is the screen height of where it meets the water or the
 // ground, lower on screen being nearer. The rules:
 //   - a surface thing is painted over any creature under the water;
+//   - a glint is painted over the creatures under the water, and under any
+//     surface thing it lies behind;
 //   - within one layer, the nearer is painted over the farther;
 //   - within one layer, two things whose depths are within SAME_DEPTH px do
 //     not overlap at all (they would pass through each other);
@@ -44,7 +46,7 @@ const JOBS = Math.max(1, Number(process.env.LAYERS_JOBS) || Math.min(8, Math.flo
 // The swimmers' lanes, by the height they cross at.
 // Swimmer lanes by depth: name, and whether it shows at the surface (a fin or
 // back out of the water) or swims under it.
-const LANES = { 458: ['whale shark', 'surface'], 542: ['fin', 'surface'], 712: ['manta', 'under'], 740: ['shoal A', 'under'], 812: ['turtle', 'under'], 850: ['shoal B', 'under'] }
+const LANES = { 458: ['whale shark', 'surface'], 542: ['fin', 'surface'], 712: ['manta', 'under'], 740: ['shoal A', 'under'], 786: ['eagle ray', 'under'], 812: ['turtle', 'under'], 850: ['shoal B', 'under'] }
 
 // Runs in the page: every object now on screen, with its layer, depth, the
 // place it is painted in, how see-through it is and the boxes of its parts.
@@ -84,9 +86,9 @@ function census() {
     const [name, layer] = LANES[lane] ?? [`swimmer ${lane}`, 'under']
     add(name, layer, g, lane)
   }
-  document.querySelectorAll('use[href="#pup"]').forEach((u, i) => add(`pup ${i + 1}`, 'surface', u, yOf(u)))
-  document.querySelectorAll('.fsh0, .fsh1').forEach((g, i) => add(`villa shoal ${i + 1}`, 'under', g, g.getBoundingClientRect().bottom))
   document.querySelectorAll('.lpX').forEach((g, i) => add(`dolphin ${i + 1}`, 'under', g, g.getBoundingClientRect().bottom))
+  // Twinkles on the water.
+  document.querySelectorAll('g.spark > g').forEach((g, i) => add(`sparkle ${i + 1}`, 'glint', g, yOf(g)))
   // On the surface and ashore.
   // A boat is one object: its `v<n>` wrapper holds the hull, the copy shown
   // while it turns about and, aboard the lead boat, the mascot riding it.
@@ -124,6 +126,9 @@ function judge(A, B) {
   // height on screen is not its depth; the film's own checks hold the two.
   if ([A.name, B.name].includes('clawd') && [A.name, B.name].some(n => n.startsWith('lead boat'))) return null
   if (top.layer === 'under' && under.layer === 'surface') return { kind: 'order', text: `${top.name} (under the water) painted over ${under.name} (on the surface)` }
+  if (top.layer === 'glint' && under.layer === 'surface' && top.depth < under.depth) return { kind: 'order', text: `${top.name} (a glint on the water, depth ${top.depth}) painted over ${under.name} (on the surface, nearer, depth ${under.depth})` }
+  if (top.layer === 'under' && under.layer === 'glint') return { kind: 'order', text: `${top.name} (under the water) painted over ${under.name} (a glint on the water)` }
+  if (top.layer === 'glint' || under.layer === 'glint') return null
   if (top.layer !== under.layer) return null
   const gap = top.depth - under.depth
   if (Math.abs(gap) < SAME_DEPTH && !(/^palm/.test(top.name) && /^palm/.test(under.name))) return { kind: 'through', text: `${A.name} and ${B.name} at one depth (${A.depth}, ${B.depth}) run through each other` }
@@ -138,7 +143,13 @@ async function shared(page, A, B) {
     await page.evaluate(({ order }) => {
       const all = [...document.querySelectorAll('svg *')]
       const root = all[order]
+      // A `<use>` draws its target's clone, which takes the target's style, so
+      // the targets it clones (and theirs) stay visible too.
       const keep = new Set([root, ...root.querySelectorAll('*')])
+      for (const el of keep) {
+        const target = el.tagName === 'use' ? document.getElementById((el.getAttribute('href') || '').slice(1)) : null
+        if (target && !keep.has(target)) for (const t of [target, ...target.querySelectorAll('*')]) keep.add(t)
+      }
       for (const el of all) el.style.visibility = keep.has(el) ? 'visible' : 'hidden'
       for (let n = root.parentNode; n && n.tagName !== 'svg'; n = n.parentNode) n.style.visibility = 'hidden'
     }, obj)
@@ -182,7 +193,7 @@ async function audit(page, frames, outDir, label) {
         const pixels = await shared(page, A, B)
         await frame.seek()
         if (pixels < MIN_PIXELS) { clear.set(key, frame.t); continue }
-        const at = [Math.max(0, Math.min(A.box[0], B.box[0]) - 20), Math.max(0, Math.min(A.box[1], B.box[1]) - 20)]
+        const at = [Math.min(W - 10, Math.max(0, Math.min(A.box[0], B.box[0]) - 20)), Math.min(H - 10, Math.max(0, Math.min(A.box[1], B.box[1]) - 20))]
         const size = [Math.min(W - at[0], Math.max(A.box[2], B.box[2]) - at[0] + 20), Math.min(H - at[1], Math.max(A.box[3], B.box[3]) - at[1] + 20)]
         const shot = path.join(outDir, `${label}-${verdict.kind}-${faults.size}-${Math.round(frame.t * 10)}.png`)
         if (!seen) await page.screenshot({ path: shot, clip: { x: at[0], y: at[1], width: Math.max(10, size[0]), height: Math.max(10, size[1]) } })

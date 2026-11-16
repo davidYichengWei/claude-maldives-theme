@@ -7,8 +7,8 @@
 import type { Mood, Need } from '../types'
 import { ENTER_S, LEAVE_S, roams } from './fleet'
 import type { Boat } from './fleet'
-import { HOIST_S, ROOM, roamSpan, scene } from './scene'
-import type { Signal } from './scene'
+import { HOIST_S, bearingOn, boatTag, drawing, roamSpan } from './scene'
+import type { Signal, WayPlan } from './scene'
 import { planOf } from './voyage'
 import type { Voyage } from './voyage'
 
@@ -17,8 +17,12 @@ import type { Voyage } from './voyage'
 // sailing off, a change of flag) have played out.
 // `renew` is when the scene has run past the time it worked out roaming
 // boats' order for, and must be drawn again; 0 when none roam.
-export type Painted = { key: string; rest: string; source: string; built: number; until: number; renew: number }
-export const UNPAINTED: Painted = { key: '', rest: '', source: '', built: 0, until: 0, renew: 0 }
+// `ways` is how the drawing plans each boat's bearing off, for the next one
+// to go on from.
+export type Painted = { key: string; rest: string; source: string; built: number; until: number; renew: number; ways: Readonly<Record<string, WayPlan>> }
+// The parts of a redraw key, in the order `paint` joins them with `|`.
+export const KEY_PARTS = ['mood', 'flag', 'trip', 'boats', 'compacting', 'scheme', 'leaving', 'fireworks', 'leap', 'hoist'] as const
+export const UNPAINTED: Painted = { key: '', rest: '', source: '', built: 0, until: 0, renew: 0, ways: {} }
 
 // What the lead boat flies, what it flew before, and when it changed.
 // `hailedAt` is when the boat last began calling for the person, so that the
@@ -60,9 +64,6 @@ export function signalOf(mood: Mood, need: Need): Signal {
   return mood === 'waiting' ? need : mood === 'error' ? 'error' : 'none'
 }
 
-function tagOf(boat: Boat): string {
-  return `${boat.kind}${boat.slot}@${boat.born}`
-}
 
 // What is on screen once the backdrop is asked for at `now`: `drawn` kept, or
 // a scene built afresh.
@@ -72,8 +73,8 @@ export function paint(drawn: Painted, picture: Picture, now: number): Painted {
   const isLeaping = now < leapUntil
   const isHoisting = now < flag.since + HOIST_S * 1000
   const fleet = picture.boats.filter(boat => boat.gone === undefined || now < boat.gone + LEAVE_S * 1000)
-  const out = fleet.filter(boat => boat.gone === undefined).map(tagOf).join()
-  const leaving = fleet.filter(boat => boat.gone !== undefined).map(boat => `${tagOf(boat)}>${boat.gone}`).join()
+  const out = fleet.filter(boat => boat.gone === undefined).map(boatTag).join()
+  const leaving = fleet.filter(boat => boat.gone !== undefined).map(boat => `${boatTag(boat)}>${boat.gone}`).join()
   const steady = `${mood}|${flag.to}|${trip.phase}@${trip.at}|${out}|${isCompacting}|${scheme}`
   const key = `${steady}|${leaving}|${isCelebrating ? firedAt : 0}|${isLeaping ? leapUntil : 0}|${isHoisting ? flag.since : 0}`
   // When the last thing under way in this picture is over: the lead boat's
@@ -94,7 +95,9 @@ export function paint(drawn: Painted, picture: Picture, now: number): Painted {
   if (key === drawn.key && !isStale) {
     return drawn
   }
-  const source = scene({
+  // Each boat goes on bearing off from where the drawing before left it.
+  const bearing = Object.fromEntries(Object.entries(drawn.ways).map(([tag, plan]) => [tag, bearingOn(plan, now / 1000)]))
+  const made = drawing({
     mood,
     boats: fleet,
     flag: { from: isHoisting ? flag.from : flag.to, to: flag.to, age: (now - flag.since) / 1000, hailed: (now - flag.hailedAt) / 1000 },
@@ -103,17 +106,20 @@ export function paint(drawn: Painted, picture: Picture, now: number): Painted {
     isLeaping,
     fireworks: isCelebrating ? (now - firedAt) / 1000 : undefined,
     scheme,
+    bearing,
     seconds: now / 1000,
   })
-  // Roaming boats are painted in an order worked out for a while ahead; the
-  // scene is drawn again a little before that runs out.
-  const isRoaming = fleet.some(boat => boat.gone === undefined && roams(boat))
+  // Roaming boats, the lead boat out on its stretch among them, are painted in
+  // an order worked out for a while ahead; the scene is drawn again a little
+  // before that runs out.
+  const isRoaming = trip.phase === 'fetch' || fleet.some(boat => boat.gone === undefined && roams(boat))
   return {
     key,
     rest: `${steady}||0|0|0`,
     built: now,
     until,
-    renew: isRoaming ? now + (roamSpan(source.length > ROOM) - 5) * 1000 : 0,
-    source,
+    renew: isRoaming ? now + (roamSpan(made.isPlain) - 5) * 1000 : 0,
+    source: made.source,
+    ways: made.ways,
   }
 }

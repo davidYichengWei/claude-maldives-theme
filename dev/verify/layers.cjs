@@ -108,6 +108,14 @@ function census() {
   if (clay.length) {
     const root = clay[0].closest('.lpos, g[clip-path], g') || clay[0]
     add('clawd', 'surface', root, Math.max(...clay.map(p => p.getBoundingClientRect().bottom)) + 8)
+  } else {
+    // Shown only through a `<use>` copy of it, as while hopping off the
+    // boardwalk.
+    const copy = [...document.querySelectorAll('use')].find(use => {
+      const target = document.getElementById((use.getAttribute('href') ?? '').slice(1))
+      return target && !target.closest('defs, g[id^="v"]') && target.querySelector('path[fill="#c97b5e"]') && opacityOf(use) > 0.05
+    })
+    if (copy) add('clawd', 'surface', copy, copy.getBoundingClientRect().bottom + 8)
   }
   add('crab', 'surface', document.querySelector('.crx'), document.querySelector('.crx') ? yOf(document.querySelector('.crx')) : 0)
   add('hermit crab', 'surface', document.querySelector('.hmx'), document.querySelector('.hmx') ? yOf(document.querySelector('.hmx')) : 0)

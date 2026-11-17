@@ -15,7 +15,6 @@ writeFileSync(out, scene({
   flag: { from: 'none', to: 'none', age: 99 },
   voyage: AT_HOME,
   boats: [{ kind: 'shell', slot: 0, from: 'L', pass: 'under', born: SECONDS * 1000 - 200000, gone: undefined }],
-  isCompacting: false,
   isLeaping: false,
   fireworks: undefined,
   scheme: undefined,

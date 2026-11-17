@@ -26,8 +26,8 @@ pastime (they last 14 to 140 s). Follow with `turn` to check getting up.
 
 ## Gotchas
 
-- The island command is refused while Claude works or waits; story.ts
-  mirrors that.
+- The island command is refused while Claude works or waits (the plugin's
+  own command handler, run by story.ts as it is).
 - Called away mid-glance, Clawd's pose ends at once; film.cjs lists it as a
   note, not a fault.
 - The island art is painted far to near: palms sorted by where they root,

@@ -74,7 +74,7 @@ events; `npm run fleet` and `npm run sides` for the schedule alone.
   briefly be the wrong way round.
 - A boat wanted while every circuit of its kind still has a boat on it or
   sailing off it waits until one is clear (`berthAt`; register.tsx sets a
-  timer, story.ts queues a `berth` event). Taking over the circuit of a boat
+  timer, which story.ts runs on the scenario's clock). Taking over the circuit of a boat
   still sailing off made that boat vanish mid-way.
 - A horizon boat called home before it reaches its water is sized by depth
   (`sizeOn` off the roam's far edge); carrying the roam's straight line past

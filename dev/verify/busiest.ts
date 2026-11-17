@@ -1,5 +1,5 @@
 // Writes the longest scenes the theme can draw: every boat out, every
-// visitor called up three times, a leap, fireworks and a whirlpool at once,
+// visitor called up three times, a leap, fireworks and the seaplane swapping its cargo at once,
 // by day and by night, on the lead boat's circuit and on its way in.
 //   node build/busiest.cjs <out dir>
 import { mkdirSync, writeFileSync } from 'fs'
@@ -22,7 +22,7 @@ const boats: SceneState['boats'] = [
 const visits = (Object.keys(VISIT_SECONDS) as VisitKind[]).flatMap(kind => [0, 1, 2].map(slot => ({ kind, slot, age: VISIT_SECONDS[kind] * (0.2 + slot * 0.25) })))
 for (const [name, voyage, mood] of [['fetch', fetch, 'working'], ['land', land, 'done']] as const) {
   for (const scheme of ['light', 'dark'] as const) {
-    const state: SceneState = { mood, flag: { from: 'question', to: 'error', age: 1, hailed: 2 }, voyage, boats, isCompacting: true, isLeaping: true, fireworks: 2, scheme, seconds: NOW / 1000, visits }
+    const state: SceneState = { mood, flag: { from: 'question', to: 'error', age: 1, hailed: 2 }, voyage, boats, plane: { at: NOW - 30000, done: NOW - 5000, swap: NOW - 2000 }, isLeaping: true, fireworks: 2, scheme, seconds: NOW / 1000, visits }
     for (const [what, s] of [['', state], ['-alone', { ...state, visits: [] }]] as const) {
       const d = drawing(s)
       writeFileSync(join(out, `busiest-${name}-${scheme}${what}.svg`), d.source)

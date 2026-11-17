@@ -10,6 +10,13 @@
 
 const KEYWORDS = ['none', 'both', 'forwards', 'backwards', 'step-end', 'step-start', 'infinite', 'linear', 'ease', 'ease-in', 'ease-out', 'ease-in-out', 'alternate', 'reverse', 'paused', 'currentColor', 'inherit', 'transparent', 'fill-box', 'view-box']
 
+const CSS_UNITS: ReadonlySet<string> = new Set([
+  ...['em', 'rem', 'ex', 'rex', 'cap', 'rcap', 'ch', 'rch', 'ic', 'ric', 'lh', 'rlh'],
+  ...['', 's', 'l', 'd'].flatMap(p => ['vw', 'vh', 'vi', 'vb', 'vmin', 'vmax'].map(u => p + u)),
+  ...['cqw', 'cqh', 'cqi', 'cqb', 'cqmin', 'cqmax'],
+  ...['cm', 'mm', 'q', 'in', 'pt', 'pc', 'px', 'deg', 'grad', 'rad', 'turn', 's', 'ms', 'hz', 'khz', 'dpi', 'dpcm', 'dppx', 'x', 'fr'],
+])
+
 const PAINT = ['fill', 'stroke', 'color', 'opacity', 'fill-opacity', 'stroke-opacity', 'stop-color']
 
 export function constructsOf(svg: string): Set<string> {
@@ -66,7 +73,8 @@ export function constructsOf(svg: string): Set<string> {
     }
   }
   // A class rule colouring a shape inside a `<use>`'s target, for a property
-  // a rule also sets on that `<use>` itself (`use[href^="#q"]` sets `fill`):
+  // a rule also sets on that `<use>` itself (as `use[href^="#q"]{fill:…}` did
+  // before the reef defs carried their fill themselves):
   // rules filling the reef's fish with colours this way froze the app in
   // either scheme. `fill:none` there, stroke rules on the same shapes and fill
   // rules on shapes under unstyled uses all played.
@@ -99,6 +107,17 @@ export function constructsOf(svg: string): Set<string> {
     for (const name of names) for (const prop of painted.get(name) ?? []) if (styled.has(prop)) out.add(`under-styled-use:${prop}`)
     if (selfClosing !== '/') inside.push(styled)
   }
+  // A class or animation named like a CSS unit: the one rule
+  // `.cqw{animation:cqw 25s steps(1) var(--P) infinite}`, with no element of
+  // that class in the scene, stopped every animation in the app, and so did
+  // `.vw{animation:vw …}`; the same rule as `.cq` or `.pqw` played, and so
+  // did elements of class `cqw` with no such rule.
+  const named = [
+    ...[...css.matchAll(/(?<![\w.])\.([a-zA-Z][\w-]*)/g)].map(m => m[1] ?? ''),
+    ...[...css.matchAll(/@keyframes\s+([\w-]+)/g)].map(m => m[1] ?? ''),
+    ...[...declarations.matchAll(/animation(?:-name)?\s*:\s*([\w-]+)/g)].map(m => m[1] ?? ''),
+  ]
+  for (const name of named) if (CSS_UNITS.has(name.toLowerCase())) out.add(`unit-name:${name}`)
   // Selector shapes: class, id and quoted values stand for any.
   const rules = css.replace(keyframes, '').replace(/@media[^{]*\{/g, '')
   for (const m of rules.matchAll(/([^{}]+)\{/g)) {
@@ -129,5 +148,7 @@ export const PROVEN: ReadonlySet<string> = new Set([
   // In the scenes as last committed.
   'override:stroke-width',
   // Watched moving in the app with the reef's shapes in place.
-  'kw:currentColor', 'prop:color', 'sel:use[href^="…"]', 'sel:*',
+  'kw:currentColor', 'prop:color', 'sel:*',
+  // Unit-named rules in scenes the app played (`.mm{fill:…}`, `.turn{animation:turn …}`).
+  'unit-name:mm', 'unit-name:turn',
 ])

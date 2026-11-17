@@ -49,8 +49,26 @@ function probe({ clay, hull }) {
   const onScreen = r => r.width + r.height > 0 && r.right >= 0 && r.left <= 1600 && r.bottom >= 0 && r.top <= 1000
   const box = r => ({ x: r.left, y: r.top, w: r.width, h: r.height })
   // The mascot's clay parts, gathered into one figure per cluster.
+  // A `<use>` copy of a figure paints its clay where the original stands,
+  // as seen through the copy's own wrappers rather than the original's.
+  const seenWithin = (el, top) => {
+    let o = 1
+    for (let n = el; n && n.nodeType === 1; n = n.parentNode) {
+      const cs = getComputedStyle(n)
+      if (cs.display === 'none' || cs.visibility === 'hidden') return 0
+      o *= Number(cs.opacity)
+      if (n === top) break
+    }
+    return o
+  }
+  const copies = [...document.querySelectorAll('use')].flatMap(use => {
+    const target = document.getElementById((use.getAttribute('href') ?? '').slice(1))
+    if (!target || target.closest('defs')) return []
+    return [...target.querySelectorAll(`path[fill="${clay}"]`)].map(el => ({ el: use, r: el.getBoundingClientRect(), o: seen(use) * seenWithin(el, target) }))
+  })
   const parts = [...document.querySelectorAll(`path[fill="${clay}"]`)]
     .map(el => ({ el, r: el.getBoundingClientRect(), o: seen(el) }))
+    .concat(copies)
     .filter(p => p.o > 0.05 && onScreen(p.r))
   const figures = []
   for (const p of parts) {

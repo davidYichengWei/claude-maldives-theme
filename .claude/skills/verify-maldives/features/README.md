@@ -14,3 +14,4 @@ sub-features, how a person gets to it in the app, how to drive it with
 | [fireworks.md](fireworks.md) | fireworks on a push or MR |
 | [day-night.md](day-night.md) | light and dark schemes |
 | [wildlife.md](wildlife.md) | reef, whale shark, shoals, heron, hermit crab, night glow |
+| [coconuts.md](coconuts.md) | the crate of coconuts for the room left in the context, Clawd's trips to it, and the seaplane that refills it on a compaction |

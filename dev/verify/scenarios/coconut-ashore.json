@@ -1,0 +1,6 @@
+{
+ "about": "The context's room drops while Clawd is home on the island: nothing happens until the next turn, when the boat fetches Clawd and goes by the boardwalk for the coconut owed before joining its circuit",
+ "start": { "mood": "idle", "home": 300 },
+ "events": [[2, "room 4"], [10, "prompt"], [10, "turn"]],
+ "frames": { "from": 1, "to": 70, "every": 0.25 }
+}

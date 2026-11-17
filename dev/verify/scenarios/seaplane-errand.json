@@ -1,0 +1,38 @@
+{
+ "about": "The context is compacted while Clawd is on the boardwalk fetching a coconut: he finishes at the crate and gets back aboard, then goes straight back up to wait for the plane",
+ "start": {
+  "mood": "idle",
+  "home": 300
+ },
+ "events": [
+  [
+   1,
+   "prompt"
+  ],
+  [
+   1,
+   "turn"
+  ],
+  [
+   24,
+   "room 4"
+  ],
+  [
+   33,
+   "compact"
+  ],
+  [
+   50,
+   "compacted 5"
+  ],
+  [
+   60,
+   "room 5"
+  ]
+ ],
+ "frames": {
+  "from": 20,
+  "to": 100,
+  "every": 0.25
+ }
+}

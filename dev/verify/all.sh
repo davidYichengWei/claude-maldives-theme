@@ -27,7 +27,7 @@ mkdir -p "$out"
 started=$(date +%s)
 
 esbuild=./node_modules/.bin/esbuild
-"$esbuild" verify/story.ts --bundle --platform=node --outfile=build/story.cjs --log-level=warning || exit 1
+"$esbuild" verify/story.ts --bundle --platform=node --external:esbuild --outfile=build/story.cjs --log-level=warning || exit 1
 "$esbuild" verify/sweep-scene.ts --bundle --platform=node --outfile=build/sweep-scene.cjs --log-level=warning || exit 1
 node build/sweep-scene.cjs "$out/sweep.svg" || exit 1
 dirs=()

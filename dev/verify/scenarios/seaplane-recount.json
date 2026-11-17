@@ -1,0 +1,48 @@
+{
+ "about": "The context is compacted mid-turn with the crate down to one coconut: the seaplane brings a full crate as soon as the compaction is done, and the next request's count, room for four, takes none of it out again",
+ "start": {
+  "mood": "idle",
+  "home": 300
+ },
+ "events": [
+  [
+   1,
+   "prompt"
+  ],
+  [
+   1,
+   "turn"
+  ],
+  [
+   25,
+   "room 1"
+  ],
+  [
+   70,
+   "compact"
+  ],
+  [
+   80,
+   "compacted 5"
+  ],
+  [
+   90,
+   "room 4"
+  ],
+  [
+   130,
+   "answer"
+  ]
+ ],
+ "frames": {
+  "from": 24,
+  "to": 140,
+  "every": 0.25
+ },
+ "expect": [
+  [
+   140,
+   "coconuts 5"
+  ]
+ ]
+}

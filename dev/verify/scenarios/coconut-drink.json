@@ -1,0 +1,22 @@
+{
+ "about": "The Coconuts row's previews while Clawd is home: Drink one has the boat fetch Clawd off the island, take him by the boardwalk to drink a coconut by the crate, toss the shell into the sea and bring him home again; Resupply then calls the seaplane, Clawd fetched to wait by the crate, the plane throwing down coconuts one at a time for Clawd to set in the crate, and Clawd taken home once it is done",
+ "start": {
+  "mood": "idle",
+  "home": 300
+ },
+ "events": [
+  [
+   2,
+   "/maldives drink"
+  ],
+  [
+   60,
+   "/maldives resupply"
+  ]
+ ],
+ "frames": {
+  "from": 0,
+  "to": 150,
+  "every": 0.25
+ }
+}

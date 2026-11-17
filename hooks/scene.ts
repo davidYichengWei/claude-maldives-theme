@@ -3,9 +3,9 @@
 import type { Mood, Need } from '../types'
 import { DRIFT_TICKS, ENTER_X, HORIZON_Y, SWEEP_TICKS, SWING_PIECES, TURN_PIECES, LEAVE_X, ROAM_S, acrossOf, depthScale, enterSeconds, fixAt, lapAt, lapStart, leaveSeconds, roams, routeOf, sailsBehind, sizeOn, sizesOf, whereabouts } from './fleet'
 import type { Boat, Point } from './fleet'
-import { BAR, BEACH_TIP, CIRCUIT_START, DOCK, circuitAt, FIRE, HOME, ISLE, JETTY, LAP_FACING, LOUNGER, along, dayOf, facingAt, isByLounger, lifeAt, planOf, RISE_S, risingFrom, scatter, turns } from './voyage'
-import type { Day, Doing, Leg, Voyage } from './voyage'
-import { FPS, beat, evenly, ft, onClock } from './clock'
+import { AT_CRATE, WAITER_BUSY, WAITER_S, waiterAtEase, BAR, BEACH_TIP, CIRCUIT_START, COCONUTS, CRATE, DOCK, MOOR, PIER_SCALE, PLANE_IN_S, STOCKED, SWAP, WALK, swapSeconds, circuitAt, flightOf, FIRE, HOME, ISLE, JETTY, LAP_FACING, LOUNGER, along, dayOf, facingAt, isByLounger, lifeAt, planOf, RISE_S, scatter, turns } from './voyage'
+import type { Day, Doing, Leg, Pantry, Plan, Plane, Voyage } from './voyage'
+import { FPS, NAMED, beat, evenly, ft, onClock } from './clock'
 
 const W = 1600
 const H = 1000
@@ -150,6 +150,21 @@ const LEAP_CSS = (() => {
 // sea is often empty. Each still swims its own cycle, crossing in the first
 // SWIM of it, but a gate keeps it out of sight on all but its chosen
 // crossings; the gate only switches while the swimmer is off the view.
+// The water the reef's life swims in, by day, and how much of it lies between
+// the eye and a swimmer at each depth: deeper, more of its colour comes
+// through the water's own, so the deeper a swimmer the hazier it looks.
+const WATER = [58, 174, 180]
+const veilAt = (y: number): number => Math.round(Math.max(0.25, Math.min(0.5, 0.25 + ((y - 700) / 160) * 0.25)) * 100) / 100
+// `#rrggbb` seen through the water as `veil` says.
+function underwater(hex: string, veil: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  return `#${[16, 8, 0].map((shift, i) => Math.round(((n >> shift) & 255) * (1 - veil) + WATER[i]! * veil).toString(16).padStart(2, '0')).join('')}`
+}
+// The reef's own fish, octopus and stingray, about its crest.
+const REEF_VEIL = veilAt(810)
+// Every colour of `svg` seen through the water.
+const inWater = (svg: string, veil: number): string => svg.replace(/#[0-9a-f]{6}\b/gi, hex => underwater(hex, veil))
+
 const VISIT_ROUND = 1680
 const SWIM = 0.4
 const VISIT_GAP = { min: 20, span: 90 }
@@ -279,10 +294,10 @@ const STYLE = `
 .tsk{fill:#55afa4}.tsh{fill:#4a9778}.tsl{fill:#64b18a}.tsc{stroke:#367d6c}.teye{fill:#265c54}
 .mb{fill:#2e909e}.mm{fill:#88dcdc;opacity:.4}
 .rbase{fill:#0a6278;opacity:.22}.kl{fill:none;stroke:#fff;opacity:.38}.sg{fill:none;stroke:#35b37e}
-.k1{color:#ff8fa3}.k2{color:#ffa35c}.k3{color:#b98ae0}.k4{color:#ffd86b}.k5{color:#4fd0bd}.k6{color:#f2665f}.k7{color:#4f86e8}.k8{color:#93cf62}.rk{color:#3d8c94}use[href^="#q"]{fill:currentColor}
+.k1{color:#ff8fa3}.k2{color:#ffa35c}.k3{color:#b98ae0}.k4{color:#ffd86b}.k5{color:#4fd0bd}.k6{color:#f2665f}.k7{color:#4f86e8}.k8{color:#93cf62}.rk{color:#3d8c94}
 .fin{fill:#33505f}.fwk{opacity:.85;stroke-dasharray:16 3;animation:wflow 1.3s linear infinite}.fcl{opacity:.6}.dol{fill:#3f6f8f}.dolb{fill:#c9dfe9}.dolh{fill:#5b8eab}
 .ff{fill:#3f86c2}.ffw{fill:#e6f6ff;opacity:.9}
-.sna{fill:#e2c550}.snb{fill:#e8e6aa}.snc{stroke:#3f95e5}.bna{fill:#e3eee3}.bns{stroke:#e3eee3}.bnb{fill:#ecd657}
+${inWater('.sna{fill:#e2c550}.snb{fill:#e8e6aa}.snc{stroke:#3f95e5}', veilAt(LANES.shoalA.y))}${inWater('.bna{fill:#e3eee3}.bns{stroke:#e3eee3}.bnb{fill:#ecd657}', veilAt(LANES.shoalB.y))}
 .ham{fill:#f6f2e6}
 .lit{fill:#4a3624;opacity:.55}
 .stars,.moon,.moonglow,.navlamp{opacity:0}
@@ -524,25 +539,27 @@ const TUFT = '<path id="tuft" class="grass" d="M0 0q-3 -7 -9 -10M0 0q-1 -9 -3 -1
 const BOAT_DEFS = `<g id="cH"><ellipse cx="0" cy="13" rx="27" ry="2.6" fill="#000" opacity=".12"/>${CREW_HULL}</g><g id="sH"><ellipse cx="0" cy="9" rx="36" ry="3" fill="#000" opacity=".14"/>${SHELL_HULL}</g><g id="cW"><path class="wake" d="M-28 7q-12 0 -26 4M-25 11q-9 2 -19 6"/><path class="wake bio bwk" d="M-28 7q-12 0 -26 4M-25 11q-9 2 -19 6"/></g><g id="sW"><path class="wake" d="M-40 4q-16 0 -34 5M-36 9q-12 2 -26 8"/><path class="wake bio bwk" d="M-40 4q-16 0 -34 5M-36 9q-12 2 -26 8"/></g><g id="lB">${LEAD_BOW}</g><g id="cB">${CREW_BOW}</g><g id="sB">${SHELL_BOW}</g>`
 
 // The reef's kinds, each drawn once standing on its origin and painted in
-// their clone's colour (`currentColor`, set by its class): staghorn,
+// their clone's colour (`currentColor`, set by its class; a kind with shapes
+// to fill says `fill="currentColor"` itself, as the engine refuses a
+// `use[href]` rule that would say it for all): staghorn,
 // brain, sea fan, table, tube sponge, finger and leather corals, a reef rock,
 // an anemone with swaying tentacles, a giant clam, a sea urchin, a starfish,
 // seagrass and a clownfish.
 const REEF_KINDS = `<path id="qa" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round" d="M0 0V-13M0 -11Q-3 -21 -9 -29M0 -11Q4 -20 10 -27M-2 -17Q-9 -18 -13 -24M2 -17Q9 -17 14 -21M0 -5Q6 -8 9 -14M0 -6Q-6 -9 -9 -15M-9 -29l-2 -4M10 -27l1.5 -4M-13 -24l-3 -2M14 -21l3 -2"/>
-<g id="qb"><path d="M-16 0A16 13 0 0 1 16 0Q0 4 -16 0Z"/><path class="kl" stroke-width="1.1" d="M-12 -2Q-10 -7 -5 -8Q0 -11 6 -7Q10 -6 12 -2M-6 -2Q-4 -5 0 -5Q4 -5 5 -2M-13 -5Q-8 -12 0 -12Q5 -12 8 -9"/></g>
-<g id="qc"><path opacity=".85" d="M0 0C-17 -4 -17 -30 -4 -34C2 -38 15 -32 15 -18C15 -8 8 -2 0 0Z"/><path class="kl" stroke-width=".9" d="M0 0L-8 -30M0 0L3 -34M0 0L11 -24M0 0L-12 -16M-12 -16Q-2 -19 11 -24M-8 -30Q3 -27 13 -14M-4 -33Q2 -24 14 -20"/></g>
-<g id="qd"><path d="M-3 0L-4 -9H4L3 0Z"/><ellipse cy="-10" rx="20" ry="4"/><ellipse cy="-16" rx="12" ry="3"/><ellipse cy="-11" rx="16" ry="1.6" fill="#fff" opacity=".22"/><ellipse cy="-17" rx="9" ry="1.2" fill="#fff" opacity=".22"/></g>
-<g id="qe"><g><rect x="-10" y="-20" width="7" height="21" rx="3.5"/><rect x="-2" y="-27" width="8" height="28" rx="4"/><rect x="7" y="-16" width="6" height="17" rx="3"/></g><g opacity=".3"><ellipse cx="-6.5" cy="-19" rx="2.2" ry="1.1"/><ellipse cx="2" cy="-26" rx="2.6" ry="1.3"/><ellipse cx="10" cy="-15" rx="2" ry="1"/></g></g>
+<g id="qb" fill="currentColor"><path d="M-16 0A16 13 0 0 1 16 0Q0 4 -16 0Z"/><path class="kl" stroke-width="1.1" d="M-12 -2Q-10 -7 -5 -8Q0 -11 6 -7Q10 -6 12 -2M-6 -2Q-4 -5 0 -5Q4 -5 5 -2M-13 -5Q-8 -12 0 -12Q5 -12 8 -9"/></g>
+<g id="qc" fill="currentColor"><path opacity=".85" d="M0 0C-17 -4 -17 -30 -4 -34C2 -38 15 -32 15 -18C15 -8 8 -2 0 0Z"/><path class="kl" stroke-width=".9" d="M0 0L-8 -30M0 0L3 -34M0 0L11 -24M0 0L-12 -16M-12 -16Q-2 -19 11 -24M-8 -30Q3 -27 13 -14M-4 -33Q2 -24 14 -20"/></g>
+<g id="qd" fill="currentColor"><path d="M-3 0L-4 -9H4L3 0Z"/><ellipse cy="-10" rx="20" ry="4"/><ellipse cy="-16" rx="12" ry="3"/><ellipse cy="-11" rx="16" ry="1.6" fill="#fff" opacity=".22"/><ellipse cy="-17" rx="9" ry="1.2" fill="#fff" opacity=".22"/></g>
+<g id="qe" fill="currentColor"><g><rect x="-10" y="-20" width="7" height="21" rx="3.5"/><rect x="-2" y="-27" width="8" height="28" rx="4"/><rect x="7" y="-16" width="6" height="17" rx="3"/></g><g opacity=".3"><ellipse cx="-6.5" cy="-19" rx="2.2" ry="1.1"/><ellipse cx="2" cy="-26" rx="2.6" ry="1.3"/><ellipse cx="10" cy="-15" rx="2" ry="1"/></g></g>
 <path id="qf" stroke="currentColor" stroke-width="5" stroke-linecap="round" fill="none" d="M-9 0V-13M-4 0V-21M1 0V-17M6 0V-25M11 0V-11M-4 -14l-4 -4M6 -16l4 -4"/>
-<g id="qj"><path d="M-2 0V-8H2V0Z"/><path d="M-14 -8Q-13 -17 0 -17Q13 -17 14 -8Q10 -6 7 -9Q3.5 -6 0 -9Q-3.5 -6 -7 -9Q-10 -6 -14 -8Z"/></g>
-<g id="qk"><path d="M-15 0Q-16 -9 -7 -11Q1 -16 9 -10Q16 -7 15 0Z"/><path d="M-9 -6Q-4 -10 2 -9" class="kl" stroke-width="1.2"/></g>
-<g id="qg"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M-8 -8q-5 -6 -4 -12M-5 -8q-3 -8 0 -14M-2 -8q-1 -9 3 -14M1 -8q2 -8 6 -12M4 -8q4 -6 9 -9M7 -8q5 -4 9 -4M-8 -7q-6 -2 -9 -6"/><path stroke="#fff" opacity=".5" stroke-width="2.4" d="M-12 -20v0M0 -22v0M5 -22v0M11 -20v0M16 -12v0"/></g><path d="M-8 0C-9 -5 -7 -9 0 -9S9 -5 8 0Z"/><path d="M-6 -6Q0 -8 6 -6" class="kl"/></g>
-<g id="qh"><path fill="#c9b994" d="M-10 0Q-11 -5 -7 -6H7Q11 -5 10 0Z"/><path d="M-9 -5Q-6 -11 -2 -8Q0 -12 2 -8Q6 -11 9 -5Q4 -3 0 -4Q-4 -3 -9 -5Z"/><path d="M-6 -6.5h0M-2 -7h0M2 -7h0M6 -6.5h0" stroke="#fff" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></g>
+<g id="qj" fill="currentColor"><path d="M-2 0V-8H2V0Z"/><path d="M-14 -8Q-13 -17 0 -17Q13 -17 14 -8Q10 -6 7 -9Q3.5 -6 0 -9Q-3.5 -6 -7 -9Q-10 -6 -14 -8Z"/></g>
+<g id="qk" fill="currentColor"><path d="M-15 0Q-16 -9 -7 -11Q1 -16 9 -10Q16 -7 15 0Z"/><path d="M-9 -6Q-4 -10 2 -9" class="kl" stroke-width="1.2"/></g>
+<g id="qg" fill="currentColor"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M-8 -8q-5 -6 -4 -12M-5 -8q-3 -8 0 -14M-2 -8q-1 -9 3 -14M1 -8q2 -8 6 -12M4 -8q4 -6 9 -9M7 -8q5 -4 9 -4M-8 -7q-6 -2 -9 -6"/><path stroke="#fff" opacity=".5" stroke-width="2.4" d="M-12 -20v0M0 -22v0M5 -22v0M11 -20v0M16 -12v0"/></g><path d="M-8 0C-9 -5 -7 -9 0 -9S9 -5 8 0Z"/><path d="M-6 -6Q0 -8 6 -6" class="kl"/></g>
+<g id="qh" fill="currentColor"><path fill="#c9b994" d="M-10 0Q-11 -5 -7 -6H7Q11 -5 10 0Z"/><path d="M-9 -5Q-6 -11 -2 -8Q0 -12 2 -8Q6 -11 9 -5Q4 -3 0 -4Q-4 -3 -9 -5Z"/><path d="M-6 -6.5h0M-2 -7h0M2 -7h0M6 -6.5h0" stroke="#fff" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></g>
 <g id="qi" stroke="#1d2433" stroke-linecap="round"><path d="M0 -4l-7 -5M0 -4l-3 -9M0 -4l2 -9M0 -4l7 -6M0 -4l9 -1M0 -4l-9 -1"/><circle cy="-3" r="3.6" fill="#2a3246" stroke="none"/></g>
-<path id="qm" d="M0 -4.6L1.3 -1.6L4.4 -1.4L2 .6L2.7 3.6L0 2L-2.7 3.6L-2 .6L-4.4 -1.4L-1.3 -1.6Z"/>
+<path id="qm" fill="currentColor" d="M0 -4.6L1.3 -1.6L4.4 -1.4L2 .6L2.7 3.6L0 2L-2.7 3.6L-2 .6L-4.4 -1.4L-1.3 -1.6Z"/>
 <path id="ql" class="sg" stroke-width="2.6" stroke-linecap="round" d="M0 0q-6 -9 2 -22M5 0q8 -7 2 -17M-5 0q-10 -6 -7 -15"/>
 <linearGradient id="rg" class="rk" x2="0" y2="1"><stop stop-color="currentColor" stop-opacity=".75"/><stop offset="1" stop-color="currentColor" stop-opacity=".35"/></linearGradient>
-<g id="qn"><path fill="#ff7a1a" d="M6 0Q1 -4 -5 0Q1 4 6 0ZM-4 0l-4 -3v6Z"/><path stroke="#fff" stroke-width="1.2" d="M2.5 -2.4v4.8M-1.5 -2.4v4.8"/></g>`
+${inWater('<g id="qn"><path fill="#ff7a1a" d="M6 0Q1 -4 -5 0Q1 4 6 0ZM-4 0l-4 -3v6Z"/><path stroke="#fff" stroke-width="1.2" d="M2.5 -2.4v4.8M-1.5 -2.4v4.8"/></g>', REEF_VEIL)}`
 
 // Every cloud is a clone of one puff, placed and scaled.
 const CLOUD = `<g id="cl" fill="url(#cloud)" filter="url(#soft)" opacity=".92"><ellipse rx="110" ry="24"/><ellipse cx="-48" cy="-14" rx="52" ry="30"/><ellipse cx="22" cy="-26" rx="64" ry="42"/><ellipse cx="86" cy="-8" rx="46" ry="26"/><ellipse cx="-96" cy="-2" rx="34" ry="16"/></g>`
@@ -553,8 +570,8 @@ const FLYER = `<path class="ffw" d="M4 -2Q-4 -18 -16 -20Q-8 -10 -4 -1ZM4 2Q-2 12
 // One four-pointed star of radius `r`, for the twinkles on the water.
 const SPARK = (r: number): string => `<path id="k${r}" d="M0 ${-r * 2}L${r / 2} 0L0 ${r * 2}L${-r / 2} 0ZM${-r * 2} 0L0 ${r / 2}L${r * 2} 0L0 ${-r / 2}Z"/>`
 
-const DEFS = `<defs><g id="dsp" fill="#fff"><path d="M-2 0Q-7 -9 -12 -7M-1 -1Q-3 -11 -7 -13M1 -1Q2 -13 5 -14M3 -1Q8 -10 12 -8M4 0Q10 -4 14 -2" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round"/><circle cx="-14" cy="-4" r=".9"/><circle cx="-9" cy="-15" r="1"/><circle cx="7" cy="-17" r="1.1"/><circle cx="15" cy="-10" r=".9"/></g><g id="drg"><ellipse rx="10" ry="2.4" fill="none" stroke="#fff" stroke-width="1.4"/><ellipse rx="6" ry="1.3" fill="#fff" opacity=".5"/></g>
-${REEF_KINDS}<g id="sr"><path class="sna" d="M12 0C9 -5 3 -6.5 -3 -5.5Q-1 -8 -6 -7.5L-7 -4L-10 -2L-16 -6L-14 0L-16 6L-10 2L-7 4C-1 6.5 8 5.5 12 0Z"/><path class="snb" d="M11 1C7 4 0 5 -7 3C0 2.6 6 2 11 1Z"/><path class="snc" fill="none" stroke-width=".9" stroke-linecap="round" d="M9 -2.6Q2 -4.4 -7 -2.4M10 -.8Q1 -1.8 -8 -.4M9 1Q2 1 -7 1.4"/><circle cx="8.2" cy="-1.6" r="1" fill="#1b1f22"/></g><g id="ss"><path class="bna" d="M9 1C9 -4 5 -8 0 -8.5L-2 -13Q-3 -9 -5 -7C-8 -4 -9 -1 -9 1C-8 5 -3 7.5 2 7C6 6.5 9 4 9 1Z"/><path class="bnb" d="M-8.6 -1L-14 -4.5V6L-8.4 3ZM-6 -6C-8 -4 -8.8 -2 -9 0L-7 -1Z"/><path fill="#26292b" d="M5 -6.2L7 4.4Q5 6.4 2.6 6.9L.2 -8.4Q3 -8 5 -6.2ZM-3.4 -7.6L-6.6 5.6Q-7.6 5 -8.3 3.8L-6 -6.3Z"/><path class="bns" fill="none" stroke-width=".8" stroke-linecap="round" d="M-1.6 -12Q-6 -18 -15 -19"/><circle cx="6.4" cy="-1.2" r=".9" fill="#1b1f22"/></g>
+const DEFS = `<defs><g id="cco"><circle r="5" fill="#86b94a"/><circle cx="-1.7" cy="-1.7" r="1.6" fill="#c2e08a" opacity=".7"/><circle cy="-3" r="1.3" fill="#5a7f2b"/></g><g id="cch"><use href="#cco"/><circle cy="-3" r="1.5" fill="#3d2a17"/></g><g id="dsp" fill="#fff"><path d="M-2 0Q-7 -9 -12 -7M-1 -1Q-3 -11 -7 -13M1 -1Q2 -13 5 -14M3 -1Q8 -10 12 -8M4 0Q10 -4 14 -2" fill="none" stroke="#fff" stroke-width="1.1" stroke-linecap="round"/><circle cx="-14" cy="-4" r=".9"/><circle cx="-9" cy="-15" r="1"/><circle cx="7" cy="-17" r="1.1"/><circle cx="15" cy="-10" r=".9"/></g><g id="drg"><ellipse rx="10" ry="2.4" fill="none" stroke="#fff" stroke-width="1.4"/><ellipse rx="6" ry="1.3" fill="#fff" opacity=".5"/></g>
+${REEF_KINDS}${inWater(`<g id="sr"><path class="sna" d="M12 0C9 -5 3 -6.5 -3 -5.5Q-1 -8 -6 -7.5L-7 -4L-10 -2L-16 -6L-14 0L-16 6L-10 2L-7 4C-1 6.5 8 5.5 12 0Z"/><path class="snb" d="M11 1C7 4 0 5 -7 3C0 2.6 6 2 11 1Z"/><path class="snc" fill="none" stroke-width=".9" stroke-linecap="round" d="M9 -2.6Q2 -4.4 -7 -2.4M10 -.8Q1 -1.8 -8 -.4M9 1Q2 1 -7 1.4"/><circle cx="8.2" cy="-1.6" r="1" fill="#1b1f22"/></g>`, veilAt(LANES.shoalA.y))}${inWater(`<g id="ss"><path class="bna" d="M9 1C9 -4 5 -8 0 -8.5L-2 -13Q-3 -9 -5 -7C-8 -4 -9 -1 -9 1C-8 5 -3 7.5 2 7C6 6.5 9 4 9 1Z"/><path class="bnb" d="M-8.6 -1L-14 -4.5V6L-8.4 3ZM-6 -6C-8 -4 -8.8 -2 -9 0L-7 -1Z"/><path fill="#26292b" d="M5 -6.2L7 4.4Q5 6.4 2.6 6.9L.2 -8.4Q3 -8 5 -6.2ZM-3.4 -7.6L-6.6 5.6Q-7.6 5 -8.3 3.8L-6 -6.3Z"/><path class="bns" fill="none" stroke-width=".8" stroke-linecap="round" d="M-1.6 -12Q-6 -18 -15 -19"/><circle cx="6.4" cy="-1.2" r=".9" fill="#1b1f22"/></g>`, veilAt(LANES.shoalB.y))}
 ${CLOUD}<g id="fy">${FLYER}</g>
 <linearGradient id="fwg" gradientUnits="userSpaceOnUse" x1="-10" y1="0" x2="-64" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".8"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient><pattern id="wsp" width="13" height="11" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="1.8"/><circle cx="9.5" cy="8.5" r="1.4"/></pattern>
 ${SPARK(2)}${SPARK(3)}${SPARK(4)}
@@ -832,7 +849,7 @@ const REEF = (() => {
 // and the fade of the light shafts. Their colours are attributes only, the
 // same by night: any class rule colouring these shapes, by day or by night,
 // stopped every animation in the desktop app.
-const LIFE_KINDS = `<defs><g id="qo"><path fill="#ffd23f" d="M7 0C5 -6 -3 -7 -6 -2L-9 -4V4L-6 2C-3 7 5 6 7 0Z"/><path stroke="#2a2a2a" stroke-width="1.5" d="M3.5 -4.6V4.4"/><circle cx="5" cy="-.8" r=".7" fill="#2a2a2a"/></g>
+const LIFE_KINDS = `<defs>${inWater(`<g id="qo"><path fill="#ffd23f" d="M7 0C5 -6 -3 -7 -6 -2L-9 -4V4L-6 2C-3 7 5 6 7 0Z"/><path stroke="#2a2a2a" stroke-width="1.5" d="M3.5 -4.6V4.4"/><circle cx="5" cy="-.8" r=".7" fill="#2a2a2a"/></g>
 <g id="qp"><path fill="#3f72e0" d="M8 0Q4 -5 -2 -4L-5 -12Q-6 -5 -6 -2L-10 -4V4L-6 2Q-6 5 -5 12L-2 4Q4 5 8 0Z"/><path stroke="#ffd23f" stroke-width="1.2" d="M3 -3.6V3.6M-1 -4V4"/></g>
 <g id="qr"><path fill="#33c2a6" d="M12 0Q8 -6 -3 -5Q-8 -4 -10 0Q-8 4 -3 5Q8 6 12 0ZM-9 0L-15 -5V5Z"/><path stroke="#ff8fb0" fill="none" stroke-width="1.4" d="M8 -3Q11 0 8 3M-2 -4Q0 0 -2 4"/></g>
 <g id="qv"><circle fill="#e9d79a" r="5.5"/><path fill="#e9d79a" d="M-4 0L-9 -3V3Z"/><path fill="#8a7a4a" d="M-2 -3h1v1h-1zM1 -4h1v1h-1zM-3 1h1v1h-1zM2 1h1v1h-1z"/><circle cx="3" cy="-1.5" r=".9" fill="#222"/></g>
@@ -841,11 +858,14 @@ const LIFE_KINDS = `<defs><g id="qo"><path fill="#ffd23f" d="M7 0C5 -6 -3 -7 -6 
 <g id="qz"><path fill="#f4f6f8" d="M6 0C4 -5 -3 -5 -5 -1L-8 -3V3L-5 1C-3 5 4 5 6 0Z"/><path stroke="#1d1d1d" stroke-width="1.6" d="M3 -3.4V3.4M-1 -4V4M-5 -1.6V1.6"/></g>
 <g id="qu" fill="#8e9aa0"><path d="M0 -4Q10 -4 15 0Q9 3 0 3Q-9 3 -15 0Q-10 -4 0 -4Z"/><path stroke="#8e9aa0" fill="none" stroke-width="1.2" d="M-14 0Q-22 1 -28 -1"/></g>
 <g id="qw" fill="#45606e"><path d="M10 0Q4 -3 0 -3Q-6 -14 -14 -16Q-9 -8 -8 -2Q-10 0 -8 2Q-9 8 -14 16Q-6 14 0 3Q4 3 10 0Z"/><path stroke="#45606e" fill="none" d="M-8 0H-34"/><path fill="#fff" opacity=".7" d="M-4 -6h1.4v1.4h-1.4zM-6 5h1.4v1.4h-1.4zM-9 -10h1.4v1.4h-1.4zM-3 1h1.4v1.4h-1.4z"/></g>
-<linearGradient id="lb" x2="0" y2="1"><stop stop-color="#fff" stop-opacity="0"/><stop offset=".25" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>`
+`, REEF_VEIL)}<linearGradient id="lb" x2="0" y2="1"><stop stop-color="#fff" stop-opacity="0"/><stop offset=".25" stop-color="#fff" stop-opacity=".18"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>`
+
+// Shafts of light slanting down through the water, over the lagoon and the
+// swimmers in it alike, so they are seen in the water rather than on it.
+const BEAMS = '<g class="lf"><g class="beam"><path class="halo" fill="url(#lb)" d="M30 560h50l110 250h-60ZM262 560h24l90 230h-34ZM610 560h44l96 220h-54Z"/><path class="halo" style="--d:4" fill="url(#lb)" d="M150 560h30l84 240h-40ZM410 560h56l104 240h-70ZM840 560h28l80 210h-34Z"/></g></g>'
 
 // The open lagoon between the villas and the reef, left out of a plain scene:
-// shafts of light slanting down through the water, a few small coral heads
-// on the bottom further out, paler for the water over them, and now and then a spotted eagle ray gliding by.
+// a few small coral heads on the bottom further out, paler for the water over them, and now and then a spotted eagle ray gliding by.
 const LAGOON = (() => {
   const corals = ['qa k6', 'qb k4', 'qc k3', 'qf k8', 'qa k1', 'qd k5', 'qb k2', 'qe k6', 'qj k4', 'qc k1']
   const head = (x: number, y: number, s: number, k: number): string => {
@@ -857,8 +877,7 @@ const LAGOON = (() => {
     }
     return `<g transform="translate(${x} ${y}) scale(${s})" opacity=".72"><use href="#qk" class="rk" transform="scale(2.4 1.8)"/><g transform="scale(.65)">${out}</g></g>`
   }
-  const beams = '<path class="halo" fill="url(#lb)" d="M30 560h50l110 250h-60ZM262 560h24l90 230h-34ZM610 560h44l96 220h-54Z"/><path class="halo" style="--d:4" fill="url(#lb)" d="M150 560h30l84 240h-40ZM410 560h56l104 240h-70ZM840 560h28l80 210h-34Z"/>'
-  return `<g class="lf"><g class="beam">${beams}</g>${head(250, 738, 0.95, 1)}${head(700, 734, 0.9, 3)}${head(960, 758, 1.15, 4)}${head(70, 776, 1.35, 0)}${head(470, 772, 1.3, 2)}</g>`
+  return `<g class="lf">${head(250, 738, 0.95, 1)}${head(700, 734, 0.9, 3)}${head(960, 758, 1.15, 4)}${head(70, 776, 1.35, 0)}${head(470, 772, 1.3, 2)}</g>`
 })()
 
 
@@ -955,7 +974,7 @@ function leadBoat(flag: Flag, wake = ''): string {
     .map(([rx, ry, alpha]) => `<ellipse class="hG" cx="0" cy="10" rx="${rx}" ry="${ry}" fill="${patch(to, from)}" opacity="${alpha}"/>`)
     .join('')
   return `<g style="${vars}"><g class="hO" opacity="${shown(to)}">${glow}</g>
-<ellipse cx="0" cy="16" rx="34" ry="3" fill="#000" opacity=".12"/><g class="wk"><g ${wake}><path class="wake" d="M-38 8q-16 0 -34 5M-34 13q-12 2 -26 8"/><path class="wake bio bwk" d="M-38 8q-16 0 -34 5M-34 13q-12 2 -26 8"/></g></g>
+<ellipse cx="0" cy="16" rx="34" ry="3" fill="#000" opacity=".12"/><g class="wk"><g ${wake}><path fill="#fff" opacity=".85" d="M-28 9.5Q-70 10 -112 15Q-70 14 -28 13.5ZM-30 13Q-60 16 -94 23Q-60 17.5 -30 15Z"/><path class="wake bio bwk" d="M-38 8q-16 0 -34 5M-34 13q-12 2 -26 8"/></g><g ${wake}><path fill="#fff" opacity=".9" d="M24 10Q32 4 39 9Q33 12.5 24 12.5Z"/></g></g>
 <path d="M-36 0L36 0Q30 12 22 13L-22 13Q-30 12 -36 0Z" fill="#7a4f2c"/><path d="M-34 3.5H34" stroke="#f4e3c1" stroke-width="1.6"/>
 <line x1="0" y1="0" x2="0" y2="-88" stroke="#5a3b22" stroke-width="2"/>
 <path d="M-2 -72Q-30 -36 -38 -6L-2 -6Z" fill="#fdfdf8"/><path d="M2 -60Q22 -32 30 -6L2 -6Z" fill="#f2c14e"/>
@@ -1048,9 +1067,15 @@ function keyframes(name: string, stops: readonly { p: number; x: number; y: numb
   return `@keyframes ${name}{${stops.map(s => `${f(s.p * 100)}%{transform:translate(${Math.round(s.x)}px,${Math.round(s.y)}px)}`).join('')}}`
 }
 
+// A cubic-bezier timing function for `curve`, by its CSS name when it has one.
+function timing(curve: readonly number[]): string {
+  const name = Object.keys(NAMED).find(key => NAMED[key]?.every((v, i) => v === curve[i]) === true && curve.length === 4)
+  return name ?? `cubic-bezier(${curve.join()})`
+}
+
 // Keyframes that carry a group sideways from `a` to `b` on `curve`.
 function glide(name: string, a: number, b: number, curve: readonly number[]): string {
-  return `@keyframes ${name}{0%{transform:translateX(${Math.round(a)}px);animation-timing-function:cubic-bezier(${curve.join()})}100%{transform:translateX(${Math.round(b)}px)}}`
+  return `@keyframes ${name}{0%{transform:translateX(${Math.round(a)}px);animation-timing-function:${timing(curve)}}100%{transform:translateX(${Math.round(b)}px)}}`
 }
 
 // Keyframes that size a boat to how far off it is at each step, relative to
@@ -1489,10 +1514,71 @@ export function roamSpan(isPlain: boolean): number {
 }
 const PLAIN_ROAM_S = 20
 
-// Slow rings on the water while the conversation is being compacted.
-const WHIRLPOOL = `<g transform="translate(860 562)" fill="none">${[58, 38, 18]
-  .map((rx, i) => `<ellipse class="foam foamline" rx="${rx}" ry="${f(rx * 0.26)}" stroke-width="${3 - i * 0.5}" opacity=".8" style="--d:${i * 3}"/>`)
-  .join('')}</g>`
+// The seaplane, side on and facing right with its waterline at the origin: a
+// float under it, a high wing, a cabin door that slides back towards the tail
+// (`door` its attributes), and a propeller turning on its nose.
+function seaplaneArt(door: string): string {
+  return `<path fill="#5a646d" d="M-44 0H38Q48 0 53 -7H-48Q-50 -2 -44 0Z"/><path fill="none" stroke="#5a646d" stroke-width="2" d="M-30 -6L-24 -20M28 -6L24 -19"/>
+<path fill="#1b9fb3" d="M-40 -38L-52 -60H-60L-56 -40Z"/><path fill="#f3f6f7" d="M60 -27C60 -33 55 -36 46 -36H-20L-52 -40H-58L-54 -30L-26 -20H46C55 -19 60 -22 60 -27Z"/>
+<path fill="#1b9fb3" d="M58 -25L-26 -24L-50 -33L-48 -30L-26 -21L57 -22Z"/><path fill="#2c5a75" d="M46 -35L56 -31L55 -28L44 -29ZM30 -33h5v4h-5zM21 -33h5v4h-5zM12 -33h5v4h-5z"/>
+<path fill="#22313b" d="M-16 -34h14v14h-14z"/><g ${door}><path fill="#e8eef0" stroke="#b9c6cc" stroke-width=".8" d="M-16 -34h14v14h-14z"/></g>
+<rect x="-6" y="-41" width="40" height="4.5" rx="2.2" fill="#dfe7ea"/><path fill="none" stroke="#5a646d" stroke-width="1.6" d="M2 -21L8 -37"/>
+<ellipse cx="62" cy="-27" rx="2" ry="13" fill="#3b4248" opacity=".18"/><g class="spr"><path d="M62 -40V-14" stroke="#3b4248" stroke-width="2.2" stroke-linecap="round"/></g><circle cx="61" cy="-27" r="2.4" fill="#3b4248"/>`
+}
+
+// The seaplane on the water, under its float: the line where it sits in the
+// water, and while it moves, foam peeling back from its bow and a wake
+// streaming out behind; and the spray it throws up where it meets the water
+// and where it leaves it.
+const PLANE_WATERLINE = '<ellipse cx="4" cy=".6" rx="54" ry="2.2" fill="#fff" opacity=".45"/>'
+const PLANE_WAKE = '<g class="spk"><path fill="#fff" opacity=".55" d="M-44 -.5C-70 -1 -100 1 -132 4C-100 3.5 -70 3 -44 2.5Z"/></g><path fill="#fff" opacity=".8" d="M44 -1Q52 -6 58 -2Q53 1 44 1.6Z"/>'
+
+// The seaplane at `seconds` on the clock, while it is in view: flying in on
+// a shallow descent, levelling off and onto the water flat, and taxiing to
+// lie behind the end of the boardwalk; once it hands over its cargo, its door
+// sliding open and shut; then turning about, gathering speed across the
+// water and climbing away nose up.
+// `isPlain` leaves out the spray, for a scene short of room.
+function seaplane(plane: Plane | undefined, seconds: number, isPlain: boolean): { svg: string; css: string } {
+  if (plane === undefined) {
+    return { svg: '', css: '' }
+  }
+  const t = seconds - plane.at / 1000
+  const { legs, gone, touch, lift, pitch } = flightOf(plane)
+  if (t >= gone) {
+    return { svg: '', css: '' }
+  }
+  const span = Number.isFinite(gone) ? gone : PLANE_IN_S + 1
+  const turning = turns(legs, -1)
+  const side = facingAt(turning, t)
+  // On the water from touching down until it lifts off; moving on it while
+  // it slows to its mooring and while it gathers speed again.
+  const afloat: Span = [touch, Math.min(lift, span)]
+  const moving: Span[] = [[touch, PLANE_IN_S - 1.5], ...(Number.isFinite(lift) ? [[lift - TAKE_OFF_RUN, lift] as Span] : [])]
+  const fade = (from: number, to: number): string => `${pct(from, span)}{opacity:0}${pct(Math.min(to, from + 0.6), span)},${pct(Math.max(from, to - 0.6), span)}{opacity:1}${pct(to, span)}{opacity:0}`
+  const raised = (at: number): string => `transform:rotate(${f(-(pitch.reduce((deg, [when, d]) => (when <= at ? d : deg), 0)))}deg)`
+  let css = `${track('spp', legs, span)}${facing('spf', turning, span, s => `scaleX(${f(s)})`)}@keyframes spr{0%,100%{transform:scaleY(1)}50%{transform:scaleY(-1)}}.spr{${loop('spr', 0.2, 'linear')};transform-origin:62px -27px}`
+  css += `@keyframes spt{0%{transform:rotate(0deg)}${pitch.map(([at, deg]) => `${pct(at, span)}{transform:rotate(${f(-deg)}deg)}`).join('')}100%{${raised(span)}}}`
+  css += `${shownIn('spa', [afloat], span, Number.isFinite(lift) ? 0 : 1)}@keyframes spw{0%{opacity:0}${moving.map(([a, b]) => fade(a, b)).join('')}100%{opacity:0}}@keyframes spk{0%,100%{transform:scaleX(.92)}50%{transform:scaleX(1.06)}}.spk{${loop('spk', 0.5, 'ease-in-out')}}`
+  // The spray thrown up as it touches down and as it lifts off.
+  const bursts = isPlain ? [] : [touch, ...(Number.isFinite(lift) ? [lift] : [])]
+  css += bursts.map((at, i) => `@keyframes sps${i}{0%,${pct(at, span)}{opacity:0;transform:scale(.3,.1)}${pct(at + 0.2, span)}{opacity:.9;transform:scale(1)}${pct(at + 1, span)},100%{opacity:0;transform:scale(1.3,1.4)}}`).join('')
+  const sprays = bursts.map((_, i) => `<g transform="translate(${i === 0 ? 10 : -30} 1) scale(1.3 .9)"><g ${once(`sps${i}`, span, t)} opacity="0"><use href="#dsp"/></g></g>`).join('')
+  let door = ''
+  if (plane.swap !== undefined) {
+    const at = (plane.swap - plane.at) / 1000
+    const shuts = at + SWAP.first + (plane.cargo ?? 0) * SWAP.each
+    css += `@keyframes spd{0%,${pct(at, span)}{transform:translateX(0)}${pct(at + SWAP.opened, span)},${pct(shuts, span)}{transform:translateX(-13px)}${pct(shuts + SWAP.shut, span)},100%{transform:translateX(0)}}`
+    door = once('spd', span, t)
+  }
+  const isAfloat = t >= afloat[0] && t < afloat[1]
+  const water = `<g ${stepped('spa', span, t)}${isAfloat ? '' : ' opacity="0"'}>${PLANE_WATERLINE}</g><g ${once('spw', span, t)} opacity="0">${PLANE_WAKE}</g>${sprays}`
+  // Pitched about the step of its float, under the wing.
+  const body = `<g transform="translate(-8 0)"><g ${once('spt', span, t)}><g transform="translate(8 0)">${seaplaneArt(door)}</g></g></g>`
+  return { css, svg: tracked('spp', span, t, along(legs, t), `<g ${once('spf', span, t)} transform="scale(${f(side)} 1)">${water}${body}</g>`) }
+}
+// How long it gathers speed across the water before it lifts off.
+const TAKE_OFF_RUN = 7
 
 // Sea life, each drawn facing right around its own origin.
 const TURTLE = `<ellipse class="shade" cx="-4" cy="12" rx="44" ry="24"/>
@@ -1652,7 +1738,7 @@ function seaLife(hasLife: boolean, visits: readonly Visit[], seconds: number): s
   return `<g><defs><g id="dl">${DOLPHIN}</g></defs>
 ${byDepth(surface)}
 ${hasLife ? LIFE_KINDS + LAGOON : ''}${REEF.far}${hasLife ? REEF.farLife : ''}${REEF.near}${hasLife ? REEF.nearLife : ''}
-${byDepth(under)}
+${byDepth(under)}${hasLife ? BEAMS : ''}
 </g>`
 }
 
@@ -1722,14 +1808,25 @@ const M_ROD = rodOf('lrod', 4.2)
 // and the notes that drift up from it as it hums.
 const M_SPYGLASS = `${clay(M_ARM_UP)}<path d="M4.4 -10.4H10L16.4 -11.3V-6.9L10 -7.8H4.4Z" fill="#d6aa4c"/><path d="M10 -10.4V-7.8M14 -10.8V-7.3" stroke="#8c6a2c" stroke-width=".5"/>`
 const M_NOTES = `<g fill="#e2574c" stroke="#e2574c">${[[0, 0], [-3, 1.6]].map(([x, d]) => `<g class="mzz" style="--d:${d}"><circle cx="${10 + (x ?? 0)}" cy="-15" r="1.1"/><path d="M${11 + (x ?? 0)} -15v-4.6q1.8.4 2.2 2.4" fill="none" stroke-width=".6"/></g>`).join('')}</g>`
+// A coconut in one of the mascot's hands, `x` across from its middle: the
+// same as one in the crate, scaled to the mascot by the boardwalk, so it looks
+// the same in its hand as it did in the crate.
+const nutAt = (x: number): string => `<use href="#cco" transform="translate(${x} -8.4) scale(.57)"/>`
 // What it wears on the lounger, and what it holds at the bar.
 // The mascot seen from the side, facing left, as it lies on the lounger:
 // thinner than it is wide, one arm on its near side, two legs, and its
 // sunglasses' near lens and arm.
 const M_SIDE = `${clay('M-4 -13h8v10h-8zM-3 -3h1v3h-1zM2 -3h1v3h-1z')}<path d="M-1 -9h2v2h-2z" fill="#a9654b"/><path d="M-3.5 -7h2v1h-2z" fill="#e29a8f"/>${inked('M-4.3 -10.5h3.4v2.7h-3.4zM-.9 -10h3v.6h-3z')}`
-const M_DRINK = `<g class="lsip" opacity="0"><circle cx="10.6" cy="-8.4" r="2" fill="#6b4c2f"/><path d="M11 -10.2v-2.4l-2 -1.2" stroke="#fff" stroke-width=".5" fill="none" stroke-linejoin="round"/></g>`
+const M_DRINK = `<g class="lsip" opacity="0">${nutAt(10.6)}<path d="M11 -11v-2.4l-2 -1.2" stroke="#fff" stroke-width=".5" fill="none" stroke-linejoin="round"/></g>`
 // Its face asleep, and what drifts up from it then. The face lies down with
 // the rest of it; the letters stay upright.
+// A coconut in the mascot's left hand, a straw in it, which `lift` raises to
+// drink from: shown while `held` holds it (no attributes for always), and not
+// at all when there is none.
+const M_HELD = `<g>${nutAt(-10.6)}<path d="M-10.8 -11v-2.6l1.8 -1.1" stroke="#fff" stroke-width=".5" fill="none" stroke-linejoin="round"/></g>`
+function heldIn(held: string | undefined, lift?: string): string {
+  return held === undefined ? '' : `<g ${held}>${lift === undefined ? M_HELD : `<g ${lift}>${M_HELD}</g>`}</g>`
+}
 const M_ASLEEP = `<g class="lnap" opacity="0">${M_BLUSH}${M_SHUT}</g>`
 const M_SNORE = `<g class="lnap" opacity="0">${[0, 1.6].map(d => `<path class="mzz" style="--d:${d}" d="M9 -19h2.6l-2.6 2.6h2.6" fill="none" stroke="#fff" stroke-width=".7"/>`).join('')}</g>`
 // How it lies in the hammock: on its side, head to the right, sunk into the
@@ -1967,10 +2064,10 @@ function rider(flag: Flag, busy: readonly string[], isStill = false): string {
 // sets out from the hammock or the lounger.
 // Getting off the lounger it starts side on: `turn` then holds the attributes
 // of its front and its side as it turns to face the front.
-function walker(gait: string, rest: string, lie = '', turn?: { front: string; side: string }): string {
-  const figure = `${clay(M_BODY + M_ARM_L + M_ARM_R)}<g ${rest}>${clay(M_LEGS_A + M_LEGS_B)}</g><g ${gait} opacity="0">${M_STEPPING}</g>${M_FACE}`
+function walker(gait: string, rest: string, lie = '', turn?: { front: string; side: string }, held?: string, scale = 2.4, lift?: string): string {
+  const figure = `${clay(M_BODY + M_ARM_L + M_ARM_R)}<g ${rest}>${clay(M_LEGS_A + M_LEGS_B)}</g><g ${gait} opacity="0">${M_STEPPING}</g>${M_FACE}${heldIn(held, lift)}`
   const body = turn === undefined ? figure : `<g ${turn.front} transform="scale(0 1)">${figure}</g><g ${turn.side}>${M_SIDE}</g>`
-  return `<g transform="scale(2.4)"><g ${lie}>${body}</g></g>`
+  return `<g transform="scale(${scale})"><g ${lie}>${body}</g></g>`
 }
 
 // The mascot living its day on the island: one figure whose stepping legs,
@@ -2068,14 +2165,13 @@ function track(name: string, legs: readonly Leg[], span: number): string {
   type Stop = { at: number; v: number; ease: string }
   const across: Stop[] = []
   const down: Stop[] = []
-  const bezier = (curve: readonly number[]): string => `cubic-bezier(${curve.join()})`
   for (const leg of legs) {
     const sideways = leg.curve ?? leg.glide
     if (sideways !== undefined) {
-      across.push({ at: leg.from, v: leg.at(0).x, ease: bezier(sideways) }, { at: leg.to, v: leg.at(1).x, ease: '' })
+      across.push({ at: leg.from, v: leg.at(0).x, ease: timing(sideways) }, { at: leg.to, v: leg.at(1).x, ease: '' })
     }
     if (leg.curve !== undefined) {
-      down.push({ at: leg.from, v: leg.at(0).y, ease: bezier(leg.curve) }, { at: leg.to, v: leg.at(1).y, ease: '' })
+      down.push({ at: leg.from, v: leg.at(0).y, ease: timing(leg.curve) }, { at: leg.to, v: leg.at(1).y, ease: '' })
     }
     if (sideways === undefined || leg.curve === undefined) {
       const parts = Math.max(6, Math.min(14, Math.round((leg.to - leg.from) / 0.4)))
@@ -2097,11 +2193,17 @@ function track(name: string, legs: readonly Leg[], span: number): string {
     }
     const all = [{ ...first, at: 0, ease: '' }, ...stops, { ...last, at: span }]
     let out = ''
+    // The value of the last stop written.
+    let said: number | undefined
     all.forEach((stop, i) => {
       const next = all[i + 1]
-      // Where one stretch ends as the next begins, the next one's pace holds.
-      if (next === undefined || pct(next.at, span) !== pct(stop.at, span)) {
-        out += `${pct(stop.at, span)}{transform:translate${axis}(${Math.round(stop.v)}px)${stop.ease === '' ? '' : `;animation-timing-function:${stop.ease}`}}`
+      const v = Math.round(stop.v)
+      // Where one stretch ends as the next begins, the next one's pace holds;
+      // and a stop in the middle of a stay where it is says nothing new.
+      const isStay = next !== undefined && said === v && Math.round(next.v) === v
+      if ((next === undefined || pct(next.at, span) !== pct(stop.at, span)) && !isStay) {
+        out += `${pct(stop.at, span)}{transform:translate${axis}(${v}px)${stop.ease === '' ? '' : `;animation-timing-function:${stop.ease}`}}`
+        said = v
       }
     })
     return `@keyframes ${name}${axis.toLowerCase()}{${out}}`
@@ -2116,7 +2218,7 @@ function track(name: string, legs: readonly Leg[], span: number): string {
 function sizeTrack(name: string, legs: readonly Leg[], span: number, base: number): string {
   const share = (p: Point): number => Math.round((sizeOn(LEAD_BOAT, p) / base) * 1000) / 1000
   const stops = legs.flatMap(leg => [
-    { at: leg.from, k: share(leg.at(0)), ease: leg.curve === undefined ? '' : `;animation-timing-function:cubic-bezier(${leg.curve.join()})` },
+    { at: leg.from, k: share(leg.at(0)), ease: leg.curve === undefined ? '' : `;animation-timing-function:${timing(leg.curve)}` },
     { at: leg.to, k: share(leg.at(1)), ease: '' },
   ])
   const first = stops[0]
@@ -2137,20 +2239,22 @@ function tracked(name: string, span: number, t: number, now: Point, inner: strin
 }
 
 // Keyframes that draw a boat's wake out as it gathers way along `legs` and
-// in again as it slows. Only a leg to or from the edge of the view leaves a
-// wake: about the lagoon the boat goes too slowly for one.
+// in again as it slows: none below WAKE_FROM px a second across the view,
+// growing with its speed to the full wake at WAKE_FULL. The wake trails off
+// its stern across the view, so only its way across counts: making out into
+// the lagoon or back in, it raises little.
+const WAKE_FROM = 15
+const WAKE_FULL = 90
 function wakeOf(name: string, legs: readonly Leg[], span: number): string {
-  const FULL_SPEED = 90
   let frames = ''
   let last = ''
   for (const leg of legs) {
     const seconds = Math.max(0.001, leg.to - leg.from)
-    const isEdge = [leg.at(0), leg.at(1)].some(p => p.x < 0 || p.x > W)
-    for (const p of [0, 0.5, 1]) {
+    for (const p of [0, 0.25, 0.5, 0.75, 1]) {
       const a = leg.at(Math.max(0, p - 0.02))
       const b = leg.at(Math.min(1, p + 0.02))
-      const speed = Math.hypot(b.x - a.x, b.y - a.y) / ((Math.min(1, p + 0.02) - Math.max(0, p - 0.02)) * seconds)
-      const way = isEdge ? Math.min(1, speed / FULL_SPEED) : 0
+      const speed = Math.abs(b.x - a.x) / ((Math.min(1, p + 0.02) - Math.max(0, p - 0.02)) * seconds)
+      const way = Math.max(0, Math.min(1, (speed - WAKE_FROM) / (WAKE_FULL - WAKE_FROM)))
       const at = pct(leg.from + p * seconds, span)
       if (at !== last) {
         frames += `${at}{transform:scaleX(${f(0.15 + 0.85 * way)});opacity:${f(way)}}`
@@ -2191,6 +2295,205 @@ const ON_DECK: readonly Pastime[] = [
   { cls: 'chu', span: [150, 180], sway: lean(150, 180, 4.8, 5), armUp: false },
 ]
 const LEAD_BOAT: Boat = { kind: 'lead', slot: 0, from: 'R', pass: 'under', born: 0, gone: undefined }
+// What the mascot gets up to by the crate while it waits for the seaplane, on
+// the wall clock like its antics on deck: a look through its spyglass towards
+// where the plane comes in, and a tune it sways to.
+const ON_PIER: readonly Pastime[] = [
+  { cls: 'qsp', span: WAITER_BUSY.spyglass, sway: lean(...WAITER_BUSY.spyglass, 3.5, 3), armUp: true },
+  { cls: 'qhu', span: WAITER_BUSY.tune, sway: lean(...WAITER_BUSY.tune, 1.2, 5), armUp: false },
+]
+
+// The mascot waiting by the crate, put through the antics named `WAITER`
+// (with its `n` and `w` arms).
+const WAITER = 'pq'
+function waiter(): string {
+  return `<g class="${WAITER}">${clay(M_BODY + M_ARM_L + M_LEGS_A + M_LEGS_B)}<g class="${WAITER}n">${clay(M_ARM_R)}</g><g class="${WAITER}w" opacity="0"><g class="mwave">${clay(M_ARM_UP)}</g></g>${M_FACE}<g class="qsp" opacity="0">${M_SPYGLASS}</g><g class="qhu" opacity="0">${M_NOTES}</g></g>`
+}
+
+
+// How long a trip by the boardwalk is timed over, for the parts of it on and
+// about the walk to share their keyframes.
+function errandSpan(plan: Plan): number {
+  const back = plan.errand?.back ?? 0
+  return Math.max(plan.settled, plan.gone, Number.isFinite(back) ? back : 0) + 1
+}
+
+// The coconut in the mascot's hand `t` seconds into a trip by the boardwalk,
+// as the attributes that show it from each one it takes from the crate until
+// it tosses the shell into the sea (undefined while it holds none for the rest of
+// the trip), and the keyframes they play.
+function holding(plan: Plan, t: number): { attrs: string | undefined; css: string } {
+  const errand = plan.errand
+  if (errand === undefined || errand.takes.length === 0) {
+    return { attrs: undefined, css: '' }
+  }
+  const span = errandSpan(plan)
+  const spans = errand.takes.map((at, k): Span => [at, errand.tosses[k] ?? span])
+  const last = spans[spans.length - 1]
+  if (last === undefined || t >= last[1]) {
+    return { attrs: undefined, css: '' }
+  }
+  const isNow = spans.some(([from, to]) => t >= from && t < to)
+  return { attrs: `${stepped('vhd', span, t)}${isNow ? '' : ' opacity="0"'}`, css: shownIn('vhd', spans, span, 0) }
+}
+
+// The mascot off the boat on the boardwalk, if the trip takes it there: on
+// its feet from hopping off to hopping aboard again, smaller there than on the
+// island, with the coconut in its hand as `hand` says and lifting it to drink
+// while it finishes one at the crate. It is drawn behind the boats on the
+// walk (`back`), and over them as it hops between the walk and the deck
+// (`front`, a copy). `deck` holds the attributes that hide it on deck meanwhile.
+// The trip began at `began` (clock ms); the seaplane it waits for, if any,
+// starts on its cargo `swap` seconds into it.
+function onWalk(plan: Plan, began: number, t: number, hand: { attrs: string | undefined }, swap: number | undefined, isPlain: boolean): { back: string; front: string; css: string; deck: string } {
+  const errand = plan.errand
+  if (errand === undefined || t >= errand.back) {
+    return { back: '', front: '', css: '', deck: '' }
+  }
+  const span = errandSpan(plan)
+  const isOff = t >= errand.off
+  const strides = errand.walk.filter(leg => leg.stride).map((leg): Span => [leg.from, leg.to])
+  const ashore: Span[] = [[errand.off, errand.back]]
+  // Waiting for the seaplane, it stays on the walk.
+  const stays: 0 | 1 = Number.isFinite(errand.back) ? 0 : 1
+  const rest = 'transform:translate(0px,0px)'
+  const sips = errand.sips.length === 0 ? '' : `@keyframes vqd{${grouped([['0%', rest], ...errand.sips.flatMap(([a, b]): [string, string][] => [[pct(a, span), rest], [pct(a + 0.4, span), 'transform:translate(3.2px,-2.6px)'], [pct(b - 0.4, span), 'transform:translate(3.2px,-2.6px)'], [pct(b, span), rest]]), ['100%', rest]])}}`
+  const walking = walker(stepped('vqg', span, t), stepped('vqs', span, t), '', undefined, hand.attrs, 2.4 * PIER_SCALE, errand.sips.length === 0 ? undefined : once('vqd', span, t))
+  // Waiting for the seaplane, from the first moment it is at ease by the
+  // crate until the plane starts on its cargo (`swap`, when known, itself a
+  // moment at ease), it passes the time.
+  const reached = stays === 1 ? (waiterAtEase(began + (errand.walk[errand.walk.length - 1]?.to ?? 0) * 1000) - began) / 1000 : 0
+  const isPassing = stays === 1 && !isPlain && (swap === undefined || swap > reached)
+  const until = swap ?? Infinity
+  const whole = Math.max(span, Number.isFinite(until) ? until + 1 : 0)
+  const isIdle = t >= reached && t < until
+  const passing = isPassing
+    ? `${shownIn('vqz', outside([[reached, Math.min(until, whole)]], whole), whole, swap === undefined ? 0 : 1)}${shownIn('vqa', [[reached, Math.min(until, whole)]], whole, swap === undefined ? 1 : 0)}${anticsCss(WAITER, timing => `${WAITER_S}s ${timing} ${PHASE} infinite`, [], WAITER_S, scatter(WAITER_S), false, 6, [], ON_PIER)}`
+    : ''
+  const figure = isPassing
+    ? `<g ${stepped('vqz', whole, t)}${isIdle ? ' opacity="0"' : ''}>${walking}</g><g ${stepped('vqa', whole, t)}${isIdle ? '' : ' opacity="0"'}><g transform="scale(${2.4 * PIER_SCALE})">${waiter()}</g></g>`
+    : walking
+  const hops = errand.walk.filter(leg => leg.hop !== undefined).map((leg): Span => [leg.from, leg.to])
+  const isHopping = hops.some(([from, to]) => t >= from && t < to)
+  return {
+    back: `<g ${stepped('vqw', span, t)}${isOff ? '' : ' opacity="0"'}><g ${stepped('vqb', span, t)}${isHopping ? ' opacity="0"' : ''}><g id="qwt">${tracked('vqp', span, t, along(errand.walk, t), figure)}</g></g></g>`,
+    front: `<g ${stepped('vqf', span, t)}${isHopping ? '' : ' opacity="0"'}><use href="#qwt"/></g>`,
+    css: `${track('vqp', errand.walk, span)}${shownIn('vqg', strides, span, 0)}${shownIn('vqs', outside(strides, span), span, 1)}${shownIn('vqw', ashore, span, stays)}${shownIn('vqk', outside(ashore, span), span, stays === 1 ? 0 : 1)}${shownIn('vqf', hops, span, 0)}${shownIn('vqb', outside(hops, span), span, 1)}${sips}${passing}`,
+    deck: `${stepped('vqk', span, t)}${isOff ? ' opacity="0"' : ''}`,
+  }
+}
+
+// Where the crate's coconuts sit, from left to right.
+const CRATE_SLOTS: readonly Point[] = Array.from({ length: COCONUTS }, (_, i) => ({ x: CRATE.x - 24 + i * 12, y: WALK.y - 15 }))
+// The mascot's left hand as it stands at the crate.
+const HAND_AT_CRATE: Point = { x: AT_CRATE.x - 10.6 * 2.4 * PIER_SCALE, y: AT_CRATE.y - 8.4 * 2.4 * PIER_SCALE }
+// Where a shell tossed from the walk drops into the sea, in front of it.
+const SPLASH: Point = { x: AT_CRATE.x - 30, y: 604 }
+// Where the coconuts the seaplane brings are thrown from: its open door.
+const DOOR: Point = { x: MOOR.x + 9, y: MOOR.y - 27 }
+
+// A fresh coconut, green, and an empty shell, brown with its hole showing.
+const coconut = (at: Point): string => `<use href="#cco" x="${f(at.x)}" y="${f(at.y)}"/>`
+const husk = (at: Point): string => `<use href="#cch" x="${f(at.x)}" y="${f(at.y)}"/>`
+
+// The crate's top, with a dark hollow for each coconut a full crate holds, so
+// the empty places show how many are gone; drawn behind the coconuts. And its
+// front, drawn over their bottoms.
+const CRATE_TOP = `<g transform="translate(${CRATE.x} ${WALK.y})"><rect x="-31" y="-14.5" width="62" height="3.5" rx="1.2" class="deck"/><path fill="#3a2716" d="${CRATE_SLOTS.map(slot => `M${slot.x - CRATE.x - 4} -14h8v1.8h-8z`).join('')}"/></g>`
+const CRATE_BOX = `<g transform="translate(${CRATE.x} ${WALK.y})"><rect x="-31" y="-11.5" width="62" height="11.5" rx="1.5" class="wall"/><path class="post" stroke-width="1.2" d="M-31 -5.7h62M-15.5 -11.5v11.5M15.5 -11.5v11.5"/></g>`
+
+// The keyframes that carry `name` from `a` to `b` (offsets from where it is
+// drawn) over `[start, end)` of `span`, in an arc rising `lift` above the
+// higher end: x at an even pace, y up and then down.
+function arc(name: string, a: Point, b: Point, start: number, end: number, span: number, lift: number): string {
+  const top = Math.min(a.y, b.y) - lift
+  const from = start > 0 ? `0%,${pct(start, span)}` : '0%'
+  const to = end < span ? `${pct(end, span)},100%` : '100%'
+  return `@keyframes ${name}x{${from}{transform:translateX(${f(a.x)}px)}${to}{transform:translateX(${f(b.x)}px)}}@keyframes ${name}y{${from}{transform:translateY(${f(a.y)}px);animation-timing-function:ease-out}${pct((start + end) / 2, span)}{transform:translateY(${f(top)}px);animation-timing-function:ease-in}${to}{transform:translateY(${f(b.y)}px)}}`
+}
+
+// The crate of coconuts on the boardwalk, as the pantry stands; on a trip by
+// the walk, each coconut the mascot takes rises from the crate into its hand,
+// and each shell it tosses arcs from its hand into the sea with a splash;
+// and, the seaplane handing over its cargo, each coconut thrown down from
+// the door into the mascot's hand and set in the crate.
+function larder(after: Pantry, voyage: Voyage, seconds: number): { svg: string; css: string } {
+  const filled = after.filled
+  if (filled !== undefined && seconds - filled.at / 1000 < swapSeconds(after.stock - filled.stock)) {
+    return handedOver(after, filled, seconds)
+  }
+  const plan = planOf(voyage)
+  const t = seconds - voyage.at / 1000
+  // Out by the boardwalk, the coconuts as they stood as it set out, with what
+  // the mascot does to them on its way; otherwise as they stand.
+  const isOut = voyage.errand !== undefined && plan.errand !== undefined && t < plan.errand.back
+  const errand = isOut ? plan.errand : undefined
+  const pantry: Pantry = isOut && voyage.errand !== undefined ? voyage.errand.from : after
+  const span = errandSpan(plan)
+  let css = ''
+  const parts: string[] = [CRATE_TOP]
+  const takes = errand?.takes ?? []
+  const tosses = errand?.tosses ?? []
+  // In the crate, the rightmost first to go.
+  CRATE_SLOTS.slice(0, pantry.stock).forEach((slot, i) => {
+    const k = pantry.stock - 1 - i
+    const at = takes[k]
+    if (at === undefined || t >= at) {
+      if (at === undefined) parts.push(coconut(slot))
+      return
+    }
+    const name = `vkt${k}`
+    const dx = HAND_AT_CRATE.x - slot.x
+    const dy = HAND_AT_CRATE.y - slot.y
+    css += `@keyframes ${name}{0%,${pct(at - TAKE_S, span)}{transform:translate(0,0)}${pct(at, span)},100%{transform:translate(${f(dx)}px,${f(dy)}px)}}${shownIn(`${name}v`, [[0, at]], span, 0)}`
+    parts.push(`<g ${stepped(`${name}v`, span, t)}><g ${once(name, span, t)}>${coconut(slot)}</g></g>`)
+  })
+  parts.push(CRATE_BOX)
+  // Each shell drunk, tossed from the mascot's hand into the sea, where it
+  // throws up spray and a ring of foam: every toss plays the same keyframes,
+  // from its own moment.
+  const splashing = tosses.filter(at => t < at + TOSS_S + SPLASH_S)
+  if (splashing.length > 0) {
+    css += TOSSED
+  }
+  for (const at of splashing) {
+    const age = t - at
+    const lands = age - TOSS_S
+    parts.push(`<g ${stepped('vksv', TOSS_S, age)}${age >= 0 && age < TOSS_S ? '' : ' opacity="0"'}><g ${once('vksx', TOSS_S, age)}><g ${once('vksy', TOSS_S, age)}>${husk(SPLASH)}</g></g></g>`)
+    parts.push(`<g transform="translate(${SPLASH.x} ${SPLASH.y}) scale(.6)"><g ${once('vksr', SPLASH_S, lands)} opacity="0"><use href="#drg"/></g><g ${once('vkss', SPLASH_S, lands)} opacity="0"><use href="#dsp"/></g></g>`)
+  }
+  return { svg: `<g>${parts.join('')}</g>`, css }
+}
+
+// The seaplane handing over its cargo `seconds` on the clock: each coconut
+// it brings thrown down from its door into the mascot's hand, held a moment
+// and set in the next empty place in the crate.
+function handedOver(after: Pantry, filled: { at: number; stock: number }, seconds: number): { svg: string; css: string } {
+  const age = seconds - filled.at / 1000
+  const span = swapSeconds(after.stock - filled.stock)
+  let css = after.stock > filled.stock ? THROWN : ''
+  const parts: string[] = [CRATE_TOP, ...CRATE_SLOTS.slice(0, filled.stock).map(coconut)]
+  CRATE_SLOTS.slice(filled.stock, after.stock).forEach((slot, k) => {
+    const thrown = SWAP.first + k * SWAP.each
+    const set = thrown + SWAP.toss + SWAP.held
+    // Thrown in an arc into the hand, held, then lowered into its place.
+    css += `@keyframes vkd${k}{0%,${pct(set, span)}{transform:translate(0,0)}${pct(set + SWAP.place, span)},100%{transform:translate(${f(slot.x - HAND_AT_CRATE.x)}px,${f(slot.y - HAND_AT_CRATE.y)}px)}}`
+    parts.push(`<g ${stepped('vkdv', SWAP.toss, age - thrown)}${age >= thrown ? '' : ' opacity="0"'}><g ${once(`vkd${k}`, span, age)}><g ${once('vkdx', SWAP.toss, age - thrown)}><g ${once('vkdy', SWAP.toss, age - thrown)}>${coconut(HAND_AT_CRATE)}</g></g></g></g>`)
+  })
+  parts.push(CRATE_BOX)
+  return { svg: `<g>${parts.join('')}</g>`, css }
+}
+// How long a coconut takes to rise from the crate into the mascot's hand, a
+// shell to arc from its hand into the sea, and its splash to die away.
+const TAKE_S = 0.45
+const TOSS_S = 0.7
+const SPLASH_S = 1.2
+// The keyframes every tossed shell plays from its own moment: its arc from
+// the hand into the sea, then the spray and the ring of foam where it lands.
+const TOSSED = `${arc('vks', { x: HAND_AT_CRATE.x - SPLASH.x, y: HAND_AT_CRATE.y - SPLASH.y }, { x: 0, y: 0 }, 0, TOSS_S, TOSS_S, 12)}${shownIn('vksv', [[0.05, TOSS_S]], TOSS_S, 0)}@keyframes vkss{0%{opacity:0;transform:scale(.3,.1)}12%{opacity:.9;transform:scale(1)}60%,100%{opacity:0;transform:scale(1.15,1.3)}}@keyframes vksr{0%{opacity:0;transform:scale(.4)}17%{opacity:.8;transform:scale(.7)}100%{opacity:0;transform:scale(2)}}`
+// And every coconut the seaplane throws: its arc from the door into the
+// mascot's hand, and in sight from then on.
+const THROWN = `${arc('vkd', { x: DOOR.x - HAND_AT_CRATE.x, y: DOOR.y - HAND_AT_CRATE.y }, { x: 0, y: 0 }, 0, SWAP.toss, SWAP.toss, 8)}${shownIn('vkdv', [[0.05, SWAP.toss]], SWAP.toss, 1)}`
 
 // The lead boat and the mascot at `seconds` on the clock. On a fetch the boat
 // comes in to the jetty, the mascot walks out along it and hops aboard, and
@@ -2200,9 +2503,15 @@ const LEAD_BOAT: Boat = { kind: 'lead', slot: 0, from: 'R', pass: 'under', born:
 // boats, `late` the mascot drawn over the boats while it is on deck or
 // hopping between deck and jetty. `isPlain` leaves out the antics, for a
 // scene short of room.
-function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { boat: string; depth: (later: number) => number; x: (later: number) => number; sails: number; early: string; late: string; css: string } {
+function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean, plane?: Plane): { boat: string; depth: (later: number) => number; x: (later: number) => number; sails: number; early: string; late: string; walk: string; css: string } {
   const t = seconds - voyage.at / 1000
   const plan = planOf(voyage)
+  // The coconut in the mascot's hand by the crate, and the mascot off the
+  // boat on the boardwalk.
+  const hand = holding(plan, t)
+  // The seaplane starting on its cargo, for the mascot waiting for it.
+  const swap = plane?.swap === undefined ? undefined : (plane.swap - voyage.at) / 1000
+  const walk = onWalk(plan, voyage.at, t, hand, swap, isPlain)
   const rand = scatter(voyage.at)
   const faces = faceCss(rand)
   const route = routeOf(LEAD_BOAT)
@@ -2211,14 +2520,16 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   const turning = turns(plan.boat, voyage.facing)
   // How near the boat sails `later` seconds from now, for painting it among
   // the fleet: along its course, then on its circuit.
-  const isCoursing = (at: number): boolean => plan.boat.length > 0 && at < (voyage.phase === 'fetch' ? plan.settled : plan.gone)
+  // Sent to wait for the seaplane, it lies off the boardwalk for good.
+  const isWaiting = voyage.wait === true
+  const isCoursing = (at: number): boolean => plan.boat.length > 0 && (isWaiting || at < (voyage.phase === 'fetch' ? plan.settled : plan.gone))
   const depth = (later: number): number =>
     isCoursing(t + later) ? along(plan.boat, t + later).y : voyage.phase === 'fetch' ? circuitAt(t + later - plan.settled).y : route.cy
   // And where across the view it is: along its course, round its circuit,
   // moored, or gone.
   const x = (later: number): number =>
     isCoursing(t + later) ? along(plan.boat, t + later).x : voyage.phase === 'fetch' ? circuitAt(t + later - plan.settled).x : t + later < plan.gone ? DOCK.x : -9999
-  const sails = Math.max(0, (voyage.phase === 'fetch' ? plan.settled : plan.gone) - t)
+  const sails = Math.max(0, (voyage.phase === 'fetch' || isWaiting ? plan.settled : plan.gone) - t)
   // What it gets up to on deck runs on the wall clock and is the same from
   // one trip to the next, so it carries on unbroken as one trip gives way to
   // another. Brought home, it rests on deck: an antic or pastime it was in
@@ -2235,8 +2546,11 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   // the boat twice, on its course and on its circuit: just aboard, the mascot
   // stands while the boat sets out, and takes up its antics only once the
   // boat is out on its circuit.
-  const figure = rider(flag, isPlain ? [] : voyage.phase === 'fetch' ? ON_DECK.map(p => p.cls) : isCalming && pastime !== undefined ? [pastime] : [])
-  const aboard = voyage.phase === 'fetch' ? rider(flag, [], true) : figure
+  const busy = isPlain ? [] : voyage.phase === 'fetch' ? ON_DECK.map(p => p.cls) : isCalming && pastime !== undefined ? [pastime] : []
+  const figure = rider(flag, busy)
+  const riding = voyage.phase === 'fetch' ? rider(flag, [], true) : rider(flag, busy)
+  // Off the boat on the boardwalk it is not on deck.
+  const aboard = walk.deck === '' ? riding : `<g ${walk.deck}>${riding}</g>`
   const under = (span: number, captain: string | undefined): { svg: string; css: string } => {
     const now = along(plan.boat, t)
     const side = facingAt(turning, t)
@@ -2265,7 +2579,7 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
     // what of it hangs below the hammock's cloth stays cut away. Called back
     // part way down, it carries on from there: its getting up is timed as a
     // whole that began `shift` seconds before this trip.
-    const rising = risingFrom(voyage.clawd)
+    const rising = voyage.rise
     const lying = rising?.bed
     const getsUp = rising === undefined ? undefined : plan.clawd[0]
     const shift = rising === undefined ? 0 : rising.u * RISE_S
@@ -2288,31 +2602,34 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
       front: `<g ${stepped('vdk', span, t)}${isAtDeck ? '' : ' opacity="0"'}>${figure}</g>`,
     }
   }
-  if (voyage.phase === 'fetch') {
+  if (voyage.phase === 'fetch' || isWaiting) {
     // Out on its stretch it roams like a fleet boat, sized by the roam.
     const sweep = f3(t - plan.settled + CIRCUIT_START)
     const [far, near] = sizesOf(LEAD_BOAT)
     const circuit = `<g style="${sweepOf(route.seconds)};--b:${sweep};--r:${route.rx}px;--q:${route.ry}px;${driftOf(route.drift ?? DRIFT_TICKS / FPS)};--c:${f3(Number(sweep) + route.driftFrom * (route.drift ?? 0))};--z0:${far};--z1:${near};--d:0" transform="translate(${route.cx} ${route.cy})">
 <g class="bx">${roamed(LEAD_BOAT, sweep, `<g class="bf">${hull(undefined, 1)}</g>${bowOf(LEAD_BOAT, 1, 'class="bw"')}${crewOf(figure, 1, '', 'class="br"')}`)}</g></g>`
-    if (t >= plan.settled) {
-      return { boat: circuit, depth, x, sails: 0, early: '', late: '', css: faces + antics }
+    if (t >= plan.settled && !isWaiting) {
+      return { boat: circuit, depth, x, sails: 0, early: '', late: '', walk: '', css: faces + antics }
     }
     const isAboard = voyage.aboard || t >= plan.boards
-    const course = under(plan.settled, isAboard ? '' : `${once('vshow', plan.boards, t)} opacity="0"`)
-    const foot = isAboard ? { back: '', front: '', css: '' } : onFoot(plan.boards)
+    const course = under(plan.settled, isAboard ? '' : `${stepped('vshow', plan.boards, t)} opacity="0"`)
+    // Back aboard from the boardwalk, it has no way of its own on foot.
+    const foot = isAboard || plan.clawd.length === 0 ? { back: '', front: '', css: '' } : onFoot(plan.boards)
     return {
       depth,
       x,
       sails,
-      boat: `<g ${once('vhide', plan.settled, t)}>${course.svg}</g><g ${once('vshow', plan.settled, t)} opacity="0">${circuit}</g>`,
-      early: isAboard ? '' : `<g ${once('vhide', plan.boards, t)}>${foot.back}</g>`,
-      late: isAboard ? '' : `<g ${once('vhide', plan.boards, t)}>${foot.front}</g>`,
-      css: faces + antics + course.css + foot.css,
+      boat: isWaiting ? course.svg : `<g ${stepped('vhide', plan.settled, t)}>${course.svg}</g><g ${stepped('vshow', plan.settled, t)} opacity="0">${circuit}</g>`,
+      early: isAboard ? '' : `<g ${stepped('vhide', plan.boards, t)}>${foot.back}</g>`,
+      walk: walk.back,
+      late: (isAboard ? '' : `<g ${stepped('vhide', plan.boards, t)}>${foot.front}</g>`) + walk.front,
+      css: faces + antics + course.css + foot.css + hand.css + walk.css,
     }
   }
   const day = dayOf(voyage.at, voyage.drill)
-  const isRiding = voyage.aboard && t < plan.lands
-  const course = plan.boat.length > 0 && t < plan.gone ? under(plan.gone, isRiding ? once('vhide', plan.lands, t) : undefined) : { svg: '', css: '' }
+  // Aboard as the trip began, or once back from the boardwalk.
+  const isRiding = (voyage.aboard || plan.errand !== undefined) && t < plan.lands
+  const course = plan.boat.length > 0 && t < plan.gone ? under(plan.gone, isRiding ? stepped('vhide', plan.lands, t) : undefined) : { svg: '', css: '' }
   const isHome = t >= plan.settled
   const at = lifeAt(day, Math.max(0, t - plan.settled))
   // Its day starts as it gets home: until then the day's clock has not begun.
@@ -2322,19 +2639,20 @@ function trip(voyage: Voyage, seconds: number, flag: Flag, isPlain: boolean): { 
   const calms = act === undefined || !isCalming ? '' : ['ca', 'caw', 'can', ...(pastime === undefined ? [] : [pastime])]
     .map(part => `.${part}{animation:${part} ${CAPTAIN_S}s ${part === 'ca' ? 'ease-in-out' : 'step-end'} ${f3(-now)}s ${Math.round((act[1] / CAPTAIN_S) * 10000) / 10000} forwards}`)
     .join('')
-  const css = faces + dayCss(day, rand, voyage.greet, isPlain) + course.css + (isRiding && calms !== '' ? antics + calms : '')
+  const css = faces + dayCss(day, rand, voyage.greet, isPlain) + course.css + (isRiding && calms !== '' ? antics + calms : '') + hand.css + walk.css
   if (isHome) {
-    return { boat: course.svg, depth, x, sails, early: life, late: '', css }
+    return { boat: course.svg, depth, x, sails, early: life, late: '', walk: walk.back, css }
   }
   const foot = onFoot(plan.settled)
-  const ashore = (figure: string): string => `<g ${once('vhide', plan.settled, t)}>${isRiding ? `<g ${once('vshow', plan.lands, t)} opacity="0">${figure}</g>` : figure}</g>`
+  const ashore = (figure: string): string => `<g ${stepped('vhide', plan.settled, t)}>${isRiding ? `<g ${stepped('vshow', plan.lands, t)} opacity="0">${figure}</g>` : figure}</g>`
   return {
     depth,
     x,
     sails,
     boat: course.svg,
-    early: `<g ${once('vshow', plan.settled, t)} opacity="0">${life}</g>${ashore(foot.back)}`,
-    late: ashore(foot.front),
+    early: `<g ${stepped('vshow', plan.settled, t)} opacity="0">${life}</g>${ashore(foot.back)}`,
+    walk: walk.back,
+    late: ashore(foot.front) + walk.front,
     css: css + foot.css,
   }
 }
@@ -2493,8 +2811,9 @@ const HERON = (() => {
   // A flight from one shore to the other: up to the right end of a circle
   // over the villas, round it, and from its left end back over the lagoon to
   // hang above the other shore and drop onto it, turning about at each end of
-  // the circle. Sideways and up and down each ease in and out between the
-  // circle's ends, so the circles are smooth with few keys.
+  // the circle. It flies straight from key to key: the clock draws a run of
+  // so many eased stretches straight anyway, and a drawing kept as written
+  // (lean or plain) must show the heron in the same place at a redraw.
   const sky = { x: 260, y: 392, rx: 150, ry: 28, k: 0.62 }
   const lap = 8
   const laps = 3
@@ -2506,22 +2825,22 @@ const HERON = (() => {
   const flights: [number, number][] = []
   const fly = (start: number, from: Spot, to: Spot): number => {
     const top = start + climb
-    xs.push([start, X(from.x), glide], [top, X(sky.x + sky.rx), glide])
-    ys.push([start, Y(from.y), 'ease-out'])
+    xs.push([start, X(from.x)], [top, X(sky.x + sky.rx)])
+    ys.push([start, Y(from.y)])
     for (let n = 0; n < laps; n++) {
       const lapStart = top + n * lap
       if (n > 0) {
-        xs.push([lapStart, X(sky.x + sky.rx), glide])
+        xs.push([lapStart, X(sky.x + sky.rx)])
         face(lapStart - 0.3, lapStart + 0.3, 1)
       }
-      xs.push([lapStart + lap / 2, X(sky.x - sky.rx), glide])
+      xs.push([lapStart + lap / 2, X(sky.x - sky.rx)])
       face(lapStart + lap / 2 - 0.3, lapStart + lap / 2 + 0.3, -1)
-      ys.push([lapStart + lap / 4, Y(sky.y - sky.ry, sky.k * 0.92), glide], [lapStart + (lap * 3) / 4, Y(sky.y + sky.ry, sky.k * 1.08), glide])
+      ys.push([lapStart + lap / 4, Y(sky.y - sky.ry, sky.k * 0.92)], [lapStart + (lap * 3) / 4, Y(sky.y + sky.ry, sky.k * 1.08)])
     }
     const over = top + (laps - 1) * lap + (lap * 3) / 4 + cruise
     const end = over + drop
     xs.push([over, X(to.x)])
-    ys.push([over, Y(to.y - 80, size(to.y)), glide], [end, Y(to.y)])
+    ys.push([over, Y(to.y - 80, size(to.y))], [end, Y(to.y)])
     flights.push([start, end])
     return end
   }
@@ -2702,10 +3021,13 @@ const LOUNGER_ART = `${lounger(50)}
 <path d="M${LOUNGER.x - 26} ${LOUNGER.y - 44}Q${LOUNGER.x + 16} ${LOUNGER.y - 86} ${LOUNGER.x + 58} ${LOUNGER.y - 44}Q${LOUNGER.x + 16} ${LOUNGER.y - 54} ${LOUNGER.x - 26} ${LOUNGER.y - 44}Z" fill="url(#roof)"/>`
 const LOUNGER_FRONT = lounger(40)
 
-// A thatched bar at the edge of the view, its lamp lit after dark.
-const BAR_ART = `<g transform="translate(${BAR.x} ${BAR.y})"><g class="post" stroke-width="4"><line x1="-32" y1="-52" x2="-32" y2="14"/><line x1="32" y1="-52" x2="32" y2="14"/></g>
-<rect x="-40" y="-14" width="80" height="28" class="wall"/><rect x="-44" y="-19" width="88" height="6" rx="1" class="deck"/>
-<circle cx="-26" cy="-23" r="4" fill="#6b4c2f"/><circle cx="-15" cy="-23" r="4" fill="#3fa35e"/><rect x="6" y="-29" width="4" height="10" fill="#2bb8a6"/>
+// A thatched bar at the edge of the view, its lamp lit after dark; on its
+// counter, in a scene with room for them, coconuts served with straws, one
+// under a paper umbrella, the same as those in the crate.
+const BAR_DRINKS = '<use href="#cco" transform="translate(-27 -25) scale(1.2)"/><use href="#cco" transform="translate(-13 -25) scale(1.2)"/><path d="M-26 -30v-5l2 -1.5M-12 -30v-4" stroke="#fff" stroke-width=".8" fill="none"/><path d="M-12 -34l-4.5 2.4h9z" fill="#ef6a5a"/>'
+const barArt = (hasLife: boolean): string => `<g transform="translate(${BAR.x} ${BAR.y})"><g class="post" stroke-width="4"><line x1="-32" y1="-52" x2="-32" y2="14"/><line x1="32" y1="-52" x2="32" y2="14"/></g>
+<rect x="-40" y="-14" width="80" height="28" class="wall"/><path d="M-40 -4H40M-40 5H40" stroke="#000" opacity=".1"/><rect x="-44" y="-19" width="88" height="6" rx="1" class="deck"/>
+${hasLife ? BAR_DRINKS : ''}<rect x="6" y="-29" width="4" height="10" fill="#2bb8a6"/>
 <path d="M-56 -48L0 -86L56 -48Q0 -40 -56 -48Z" fill="url(#roof)"/><circle class="lit" cx="0" cy="-36" r="4"/></g>`
 
 // Logs on the sand, alight after dark.
@@ -2810,7 +3132,8 @@ export type SceneState = {
   // The lead boat's trip with the mascot: out to its circuit while the agent
   // works, back to the island when the work is over.
   voyage: Voyage
-  isCompacting: boolean
+  // The seaplane called for a compaction, while it is in view.
+  plane?: Plane
   // A prompt was just sent: the flying fish leap.
   isLeaping: boolean
   // How many seconds the fireworks have been going, while they are.
@@ -2822,6 +3145,9 @@ export type SceneState = {
   // Swimmers, gulls and dolphins called up by hand, with how many seconds
   // ago each was called; none when left out.
   visits?: readonly Visit[]
+  // The coconuts on the boardwalk, as they stand when the trip began; a full
+  // crate when left out.
+  pantry?: Pantry
   // The wall clock the looping animations take their phase from.
   seconds: number
 }
@@ -2849,30 +3175,53 @@ export const ROOM = 131000
 // trips under way (boats coming and going, the mascot's way to and from its
 // boat), which take a step for every stretch on the clock, run smoothly off
 // it instead, for the little while they last. Only one still too long, with
-// every boat, fireworks, a whirlpool and a leap at once, also leaves out the
-// reef's extra life, and as a last resort runs entirely off the clock.
+// every boat, fireworks, the seaplane and a leap at once, also leaves out the
+// reef's extra life, and runs entirely off the clock; and, with the mascot by
+// the boardwalk besides, as a last resort the swimmers and gulls called up by
+// hand.
 export function scene(state: SceneState): string {
   return drawing(state).source
 }
 
-// The scene, whether it had to be drawn plainly, and how it plans each
-// boat's bearing off, for the next drawing to go on from.
-export function drawing(state: SceneState): { source: string; isPlain: boolean; isLean: boolean; ways: Record<string, WayPlan> } {
-  let last = { source: '', isPlain: true, isLean: true, ways: {} as Record<string, WayPlan> }
-  for (const [isPlain, hasLife, clocks] of [[false, true, ['all']], [true, true, ['all', 'lean']], [true, false, ['all', 'lean', 'none']]] as const) {
-    const drawn = draw(state, isPlain, hasLife)
-    for (const clock of clocks) {
-      last = { ...drawn, isLean: clock !== 'all', source: compact(clock === 'none' ? drawn.source : onClock(drawn.source, clock === 'lean')) }
-      if (last.source.length <= ROOM) return last
-    }
+// The ways a scene is drawn, richest first: whether plainly, with the reef's
+// extra life, how much of it on the clock, and with the calls made by hand.
+const TIERS = [[false, true, 'all', true], [true, true, 'all', true], [true, true, 'lean', true], [true, false, 'all', true], [true, false, 'lean', true], [true, false, 'none', true], [true, false, 'all', false], [true, false, 'lean', false], [true, false, 'none', false]] as const
+
+// The scene, whether it had to be drawn plainly, which of the TIERS it is
+// drawn in, and how it plans each boat's bearing off, for the next drawing
+// to go on from. It is drawn in the richest tier that fits, but not with the
+// reef's extra life or the calls made by hand where the tier `richest` had
+// none: a scene drawn again with nothing changed would bring them in all at
+// once. Drawn plainly or not, on the clock or not, it looks the same.
+export function drawing(state: SceneState, richest = 0): { source: string; isPlain: boolean; isLean: boolean; tier: number; ways: Record<string, WayPlan> } {
+  let last = { source: '', isPlain: true, isLean: true, tier: TIERS.length - 1, ways: {} as Record<string, WayPlan> }
+  const drafts = new Map<string, ReturnType<typeof draw>>()
+  const [, hadLife, , hadCalls] = TIERS[Math.min(Math.max(0, richest), TIERS.length - 1)] ?? TIERS[0]
+  const from = TIERS.findIndex(([, hasLife, , isCalled]) => (hadLife || !hasLife) && (hadCalls || !isCalled))
+  for (let tier = from; tier < TIERS.length; tier++) {
+    const [isPlain, hasLife, clock, isCalled] = TIERS[tier] ?? TIERS[0]
+    const kind = `${isPlain} ${hasLife} ${isCalled}`
+    const drawn = drafts.get(kind) ?? draw(isCalled ? state : { ...state, visits: [] }, isPlain, hasLife)
+    drafts.set(kind, drawn)
+    last = { ...drawn, isLean: clock !== 'all', tier, source: compact(clock === 'none' ? drawn.source : onClock(drawn.source, clock === 'lean')) }
+    if (last.source.length <= ROOM) return last
   }
   return last
+}
+
+// The scene in full with its animations as written, before they are put on
+// the clock.
+export function written(state: SceneState): string {
+  return draw(state, false, true).source
 }
 
 function draw(state: SceneState, isPlain: boolean, hasLife: boolean): { source: string; isPlain: boolean; ways: Record<string, WayPlan> } {
   const { mood, fireworks: show, isLeaping, scheme, seconds } = state
   const visits = state.visits ?? []
-  const pair = trip(state.voyage, seconds, state.flag, isPlain)
+  const pantry = state.pantry ?? STOCKED
+  const pair = trip(state.voyage, seconds, state.flag, isPlain, state.plane)
+  const store = larder(pantry, state.voyage, seconds)
+  const flight = seaplane(state.plane, seconds, isPlain)
   const leadSpot: Spot | undefined = pair.boat === '' ? undefined : at => {
     const y = pair.depth(at - seconds)
     return { x: pair.x(at - seconds), y, half: HALF.lead * depthScale(y) }
@@ -2883,7 +3232,10 @@ function draw(state: SceneState, isPlain: boolean, hasLife: boolean): { source: 
     pair.boat === ''
       ? []
       : [{ svg: `<g id="v99">${pair.boat}</g>`, copy: '<use href="#v99"/>', depth: pair.depth(AHEAD_S), depthIn: pair.depth, xIn: pair.x, moving: Math.max(pair.sails, state.voyage.phase === 'fetch' ? roamSpan(isPlain) : 0, ...boats.near.map(part => part.moving)), ...LEAD_REACH }]
-  const around = stack([...boats.near, ...lead].sort((a, b) => a.depth - b.depth), 'zn')
+  // The mascot out on the boardwalk stands among them at the boardwalk's
+  // depth; hopping down to the deck it is drawn over them all.
+  const walker: Part[] = pair.walk === '' ? [] : [{ svg: pair.walk, copy: pair.walk, depth: WALK.y, depthIn: () => WALK.y, xIn: () => AT_CRATE.x, moving: 0, wide: 60, tall: 70 }]
+  const around = stack([...boats.near, ...lead, ...walker].sort((a, b) => a.depth - b.depth), 'zn')
 
   // The boardwalk and the water villas on it, level with each other.
   const pier = `<path class="post" stroke-width="7" stroke-linecap="round" d="M-20 566H600"/><path class="post" stroke-width="3" d="${[10, 170, 340, 500, 580].map(px => `M${px} 566v26`).join('')}"/>
@@ -2891,7 +3243,7 @@ ${bungalow(90, 563, 0.95)}${bungalow(255, 563, 1)}${bungalow(420, 563, 0.95)}`
   const isle = ISLE
 
   const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid slice">
-<style>${styleFor(scheme)}${CRAB.css}${HERON.css}${HERMIT.css}${boats.css}${pair.css}${around.css}</style>
+<style>${styleFor(scheme)}${CRAB.css}${HERON.css}${HERMIT.css}${boats.css}${pair.css}${store.css}${flight.css}${around.css}</style>
 ${DEFS}
 <g class="${mood}" style="--t:${f3(seconds % 100000)}">
 <rect width="${W}" height="${HORIZON + 2}" fill="url(#sky)"/>
@@ -2915,10 +3267,12 @@ ${ATOLL}
 <g class="glit"><path d="M${SUN_X - 24} ${HORIZON}L${SUN_X + 24} ${HORIZON}L${SUN_X + 190} ${HORIZON + 430}L${SUN_X - 190} ${HORIZON + 430}Z" class="colm" fill="url(#column)" filter="url(#blur6)"/>
 <g class="gcol">${glitter()}</g></g>${show === undefined ? '' : fireworkGlow(show)}</g>
 ${seaLife(hasLife, visits, seconds)}
-<g><g class="wvs">${waves()}</g>${sparkles()}${state.isCompacting ? WHIRLPOOL : ''}</g>
+<g><g class="wvs">${waves()}</g>${sparkles()}</g>
 <ellipse class="halo" cx="260" cy="570" rx="380" ry="70" fill="url(#halo)" opacity=".85"/>
 <g opacity=".18" class="reflit" filter="url(#soft)" transform="translate(0 1184) scale(1 -1)"><use href="#pier"/></g>
+${flight.svg}
 <g id="pier">${pier}</g>
+${store.svg}
 <ellipse class="halo" cx="${isle + 90}" cy="705" rx="540" ry="135" fill="url(#halo)"/>
 <g>${boats.far.map(part => part.svg).join('')}</g>
 <path d="${beach(44)}" class="shoal" opacity=".75" filter="url(#blur6)"/>
@@ -2934,7 +3288,7 @@ ${HERMIT.svg}
 ${palm(isle + 192, 682, 0.8, 44, 4.1)}${palm(isle - 70, 686, 0.95, -30, 0)}${palm(isle + 20, 690, 1.15, 26, 2.2, true)}
 <use href="#shrub" transform="translate(${isle - 89} 703)"/><use href="#shrub" transform="translate(${isle + 80} 700) scale(-.82 .82)"/>
 <path d="M${isle + 77} 708q-10 -28 0 -58q10 30 0 58z" fill="#ff9f43"/><path d="M${isle + 77} 706v-54" stroke="#fff" stroke-width="1.6"/>
-${BAR_ART}${LOUNGER_ART}
+${barArt(hasLife)}${LOUNGER_ART}
 ${pair.early}
 <g><path class="ham" d="M${isle - 75} 610Q${isle - 24} 668 ${isle + 23} 616Q${isle - 24} 642 ${isle - 75} 610Z"/><path d="M${isle - 75} 610Q${isle - 24} 657 ${isle + 23} 616" fill="none" stroke="#ef6f5e" stroke-width="2.2"/></g>
 ${FIRE_ART}

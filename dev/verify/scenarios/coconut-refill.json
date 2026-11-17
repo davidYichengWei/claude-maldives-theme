@@ -1,0 +1,42 @@
+{
+ "about": "The crate down to one coconut, the context is compacted mid-turn: the seaplane flies in and moors behind the end of the boardwalk while Clawd sails over and waits by the crate; once it is done the plane throws down four coconuts, a full crate, one at a time and Clawd sets each in the crate, then the plane takes off and Clawd goes back to work",
+ "start": {
+  "mood": "idle",
+  "home": 300
+ },
+ "events": [
+  [
+   1,
+   "prompt"
+  ],
+  [
+   1,
+   "turn"
+  ],
+  [
+   25,
+   "room 1"
+  ],
+  [
+   70,
+   "compact"
+  ],
+  [
+   80,
+   "compacted 4"
+  ],
+  [
+   90,
+   "room 4"
+  ],
+  [
+   130,
+   "answer"
+  ]
+ ],
+ "frames": {
+  "from": 24,
+  "to": 140,
+  "every": 0.25
+ }
+}

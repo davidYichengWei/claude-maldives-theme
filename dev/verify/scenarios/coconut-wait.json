@@ -1,0 +1,7 @@
+{
+ "about": "A long compaction: Clawd waits by the crate for the seaplane, looking out through its spyglass and humming a tune in turn, and leaves off at ease as the plane starts throwing down its coconuts",
+ "start": { "mood": "idle", "home": 300 },
+ "events": [[1, "prompt"], [1, "turn"], [10, "room 2"], [40, "compact"], [103, "compacted 4"], [112, "room 4"], [150, "answer"]],
+   "expect": [[35, "coconuts 2"], [133, "coconuts 5"]],
+ "frames": { "from": 40, "to": 135, "every": 0.25 }
+}

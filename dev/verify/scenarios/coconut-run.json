@@ -1,0 +1,34 @@
+{
+ "about": "Out at work, the context's room drops a coconut and then two: Clawd sails to the end of the boardwalk, hops up, takes a coconut, drinks it there and tosses the shell into the sea (two in turn the second time), hops back aboard empty-handed and the boat goes back to its circuit",
+ "start": {
+  "mood": "idle",
+  "home": 300
+ },
+ "events": [
+  [
+   1,
+   "prompt"
+  ],
+  [
+   1,
+   "turn"
+  ],
+  [
+   30,
+   "room 4"
+  ],
+  [
+   75,
+   "room 2"
+  ],
+  [
+   125,
+   "answer"
+  ]
+ ],
+ "frames": {
+  "from": 28,
+  "to": 140,
+  "every": 0.25
+ }
+}

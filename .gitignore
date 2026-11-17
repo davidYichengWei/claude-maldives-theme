@@ -6,3 +6,4 @@ dev/build/
 dev/*.svg
 dev/*.png
 dev/verify/out/
+.record

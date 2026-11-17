@@ -5,13 +5,13 @@ import type { Mood, Need } from '../types'
 import { berthAt, muster } from './fleet'
 import type { Boat } from './fleet'
 import { makeColors } from './make-colors.js'
-import { FIREWORKS_MS, KEY_PARTS, UNFLAGGED, UNPAINTED, hoist, paint, signalOf } from './paint'
+import { FIREWORKS_MS, KEY_PARTS, UNFLAGGED, UNHELD, UNPAINTED, hoist, paint, signalOf } from './paint'
 import type { Call, Flag } from './paint'
 import { MOST_CALLED, callUp, stillOut } from './paint'
 import { VISIT_SECONDS } from './scene'
 import type { VisitKind } from './scene'
-import { AT_HOME, DRILLS, embark, planOf } from './voyage'
-import type { Drill, Voyage } from './voyage'
+import { AT_HOME, COCONUTS, DRILLS, STOCKED, embark, errandUntil, isAwaited, levelOf, pantryAt, planOf, planeCalled, planeGone, stageAt, steerAll } from './voyage'
+import type { Drill, Pantry, Plane, Voyage } from './voyage'
 
 const { theme, problems } = makeColors({
   label: 'Maldives lagoon',
@@ -67,7 +67,7 @@ const crew = atom({ plugin: 'maldives', key: 'crew' } as const, 0)
 const shells = atom({ plugin: 'maldives', key: 'shells' } as const, 0)
 // The agent's real state, kept apart from what a preview shows.
 const live = atom({ plugin: 'maldives', key: 'live' } as const, { mood: 'idle' as Mood, need: 'permission' as Need, crew: 0, shells: 0 })
-const compacting = atom({ plugin: 'maldives', key: 'compacting' } as const, false)
+const plane = atom({ plugin: 'maldives', key: 'plane' } as const, null as Plane | null)
 const fireworks = atom({ plugin: 'maldives', key: 'fireworks' } as const, 0)
 const leap = atom({ plugin: 'maldives', key: 'leap' } as const, 0)
 // The lead boat's trip with the mascot, and the other boats on the water. Each
@@ -75,8 +75,16 @@ const leap = atom({ plugin: 'maldives', key: 'leap' } as const, 0)
 // everything where it was.
 const voyage = atom({ plugin: 'maldives', key: 'voyage' } as const, AT_HOME as Voyage)
 const boats = atom({ plugin: 'maldives', key: 'boats' } as const, [] as Boat[])
+// The coconuts on the boardwalk, and how many the room left in the context
+// stands for: as the backdrop shows it, and as the context really has it.
+const pantry = atom({ plugin: 'maldives', key: 'pantry' } as const, STOCKED as Pantry)
+const level = atom({ plugin: 'maldives', key: 'level' } as const, COCONUTS)
+const liveLevel = atom({ plugin: 'maldives', key: 'liveLevel' } as const, COCONUTS)
 // Swimmers, gulls and dolphins called up by hand, while they are out.
 const visits = atom({ plugin: 'maldives', key: 'visits' } as const, [] as Call[])
+// The scene's content as last drawn and the tier it was drawn in, kept over a
+// reload so the scene drawn again with nothing changed looks the same.
+const held = atom({ plugin: 'maldives', key: 'held' } as const, UNHELD)
 // What can be called, by where it shows, with its button's label.
 const WILDLIFE: readonly { where: string; kinds: readonly [VisitKind, string][] }[] = [
   { where: 'Under water', kinds: [['snappers', 'Snappers'], ['bannerfish', 'Bannerfish'], ['turtle', 'Turtle'], ['manta', 'Manta'], ['ray', 'Eagle ray']] },
@@ -116,13 +124,16 @@ const shownLang = atom({ plugin: 'maldives', key: 'lang' } as const, 'en' as Lan
 const ZH: Readonly<Record<string, string>> = {
   'Control Panel': '控制面板', Appearance: '外观', Boats: '船只', Clawd: 'Clawd', Wildlife: '野生动物', Reset: '重置', Close: '关闭',
   Scheme: '配色', Light: '浅色', Dark: '深色', Auto: '自动', Language: '语言', 'Panel opacity': '面板不透明度',
-  Dinghies: '小艇', 'Fishing boats': '渔船',
-  State: '状态', Idle: '空闲', Working: '工作中', Error: '出错', Fireworks: '烟花',
-  'Waiting on': '等待', Permission: '权限', Question: '提问', Plan: '计划',
-  'On the island': '岛上活动', Fishing: '钓鱼', Hammock: '吊床', Lounger: '躺椅', Bar: '吧台', 'Fire pit': '火堆', Tour: '都玩一遍',
+  Subagents: 'Subagent 小艇', 'Background jobs': '后台命令 渔船',
+  'Claude state': 'Claude 状态', Idle: '空闲', Working: '工作中', Error: '出错', 'Fireworks (push/PR)': '烟花（push/PR）',
+  'Waiting for you': '等你处理', 'Tool approval': '工具授权', 'A question': '回答提问', 'Plan approval': '批准计划',
+  'Context left': '上下文余量', 'Use 20%': '消耗 20%', Compact: '压缩补给',
+  'Idle pastime': '空闲时在岛上', Fishing: '钓鱼', Hammock: '吊床', Lounger: '躺椅', Bar: '吧台', 'Fire pit': '火堆', Tour: '都玩一遍',
   'Under water': '水下', 'On the surface': '水面', 'In the sky': '天空',
   'Flying fish': '飞鱼', Snappers: '笛鲷群', Bannerfish: '马夫鱼群', Turtle: '海龟', Manta: '蝠鲼', 'Eagle ray': '鹞鲼', 'Whale shark': '鲸鲨', Shark: '鲨鱼', Dolphins: '海豚', Gulls: '海鸥',
 }
+// What the agent waits on the person for, as each one's button reads.
+const NEED_LABEL: Readonly<Record<Need, string>> = { permission: 'Tool approval', question: 'A question', plan: 'Plan approval' }
 // Each pastime's button, named for where Clawd spends it rather than how
 // (a nap, sunbathing), so it reads right by day and by night alike: the
 // panel cannot tell which the backdrop shows while it follows the app.
@@ -158,12 +169,85 @@ const NEEDS: readonly Need[] = ['permission', 'question', 'plan']
 // person: held on them, or stopped by a failure they have not seen, which
 // stays up until their next prompt.
 async function setMood($: EngineInterface, next: Mood): Promise<void> {
-  const phase = next === 'idle' || next === 'done' ? 'land' : 'fetch'
-  const now = await $.clock.now()
-  if ((await read($, voyage)).phase !== phase) {
-    await update($, voyage, last => embark(last, phase, now, next === 'done'))
-  }
+  await steerTrip($, next)
   await update($, mood, () => next)
+}
+
+// When the trip is next looked at again: the mascot back aboard from the
+// boardwalk, aboard and owed coconuts, or back to fill the crate.
+let retryAt = 0
+
+// Sets the trip going for `current` (the mood shown, unless given): out to
+// work or home, by the boardwalk on the way while the crate holds more
+// coconuts than the context has room for, and the seaplane called with a
+// fuller crate once it has room for more. A mascot off the boat on the
+// boardwalk finishes there first, the trip set going once it is back aboard.
+// `isFetched` sends the boat for the mascot whatever the mood, to take it by
+// the boardwalk; once aboard, the trip is set going for the mood again.
+async function steerTrip($: EngineInterface, given?: Mood, isFetched = false): Promise<void> {
+  const now = await $.clock.now()
+  const current = given ?? (await read($, mood))
+  const phase = !isFetched && (current === 'idle' || current === 'done') ? 'land' : 'fetch'
+  const last = await read($, voyage)
+  const stood = await read($, pantry)
+  const room = await read($, level)
+  const called = (await read($, plane)) ?? undefined
+  const next = steerAll(last, stood, called, phase, current === 'done', room, now)
+  if (next.pantry !== stood) {
+    await update($, pantry, () => next.pantry)
+  }
+  if (next.voyage !== last) {
+    await update($, voyage, () => next.voyage)
+  }
+  if (next.plane !== called) {
+    await update($, plane, () => next.plane ?? null)
+  }
+  const retry = next.retry ?? Infinity
+  if (retry !== Infinity && retry !== retryAt) {
+    retryAt = retry
+    $.clock.after(Math.max(1, retry - now), async () => {
+      if (retryAt === retry) {
+        retryAt = 0
+        await steerTrip($)
+      }
+    })
+  }
+}
+
+// The token count at which the context is compacted, as /context works it
+// out: asked for once, and again after each compaction.
+let compactsAt: number | undefined
+
+// A compaction fills the crate whatever room it leaves: the first count
+// after it is where the crate starts from, and only a change from that
+// count takes coconuts out of it.
+let refilled = false
+
+// Reads how full the context is (`tokens`, when known already) and shows it
+// as the coconuts left in the crate.
+async function gauge($: EngineInterface, tokens?: number): Promise<void> {
+  const { context } = await $.session.usage()
+  const used = tokens ?? context.tokens
+  if (used === undefined) {
+    return
+  }
+  if (compactsAt === undefined) {
+    try {
+      const full = (await $.session.usage({ breakdown: 'summary' })).context.breakdown
+      compactsAt = full?.autoCompactThreshold ?? full?.rawMaxTokens ?? context.window
+    } catch {
+      compactsAt = context.window
+    }
+  }
+  const real = levelOf(used, compactsAt)
+  if (refilled) {
+    refilled = false
+    await update($, liveLevel, () => real)
+  } else if (real !== (await read($, liveLevel))) {
+    await update($, liveLevel, () => real)
+    await update($, level, () => real)
+    await steerTrip($)
+  }
 }
 
 // When a boat left waiting for a free circuit is next looked at again.
@@ -221,6 +305,8 @@ async function reset($: EngineInterface): Promise<{ mood: Mood; crew: number; sh
   const real = { ...(await read($, live)), crew: running }
   await update($, live, () => real)
   await update($, need, () => real.need)
+  const room = await read($, liveLevel)
+  await update($, level, () => room)
   await setMood($, real.mood)
   await update($, crew, () => real.crew)
   await update($, shells, () => real.shells)
@@ -257,13 +343,33 @@ async function sendOut($: EngineInterface, kind: 'crew' | 'shells', wanted: numb
   return kind === 'crew' ? `Dinghies out: ${total}` : `Fishing boats out: ${total}`
 }
 
+// Where the seaplane is at `now`, for the debug output.
+function seaplaneLine(called: Plane | null, now: number): string {
+  if (called === null) {
+    return 'none called'
+  }
+  const ago = (at: number): string => (now >= at ? `${((now - at) / 1000).toFixed(1)}s ago` : `in ${((at - now) / 1000).toFixed(1)}s`)
+  const gone = planeGone(called)
+  return [`called ${ago(called.at)}`, called.done === undefined ? 'compacting' : `compacted ${ago(called.done)}`, called.swap === undefined ? undefined : `cargo swapped ${ago(called.swap)}`, gone === Infinity ? undefined : now < gone ? 'leaving' : 'gone'].filter(part => part !== undefined).join(', ')
+}
+
 async function goAshore($: EngineInterface, drill: Drill): Promise<string> {
   const current = await read($, mood)
   if (current === 'working' || current === 'waiting') {
     return 'Clawd is out on the boat while Claude works. Try again once the turn is over.'
   }
   const now = await $.clock.now()
-  await update($, voyage, last => ({ ...embark(last, 'land', now, false), drill }))
+  const last = await read($, voyage)
+  if (isAwaited((await read($, plane)) ?? undefined, now)) {
+    return 'Clawd is waiting for the seaplane on the boardwalk. Try again once it has been unloaded.'
+  }
+  if (errandUntil(last, now, true) !== undefined) {
+    return 'Clawd is fetching a coconut on the boardwalk. Try again in a moment.'
+  }
+  // Called away on its way to the boardwalk, it leaves the crate as it was.
+  await update($, pantry, stood => pantryAt(stood, last, now))
+  await update($, voyage, () => ({ ...embark(last, 'land', now, false), drill }))
+  await steerTrip($)
   return drill === 'tour' ? 'Clawd heads home, then takes a short turn at each pastime.' : `Clawd heads home, then goes straight to: ${drill}`
 }
 
@@ -308,6 +414,37 @@ async function leapNow($: EngineInterface): Promise<string> {
   return 'Flying fish leaping.'
 }
 
+// Shows the context as if a fifth more of its room were used up: Clawd goes
+// for a coconut and drinks it by the crate. Home on the island, where it
+// would leave it until the next turn, the boat fetches it now, and takes it
+// home again once it has drunk it.
+async function drink($: EngineInterface): Promise<string> {
+  const room = await read($, level)
+  if (room === 0) {
+    return 'The crate is empty: only the seaplane brings more.'
+  }
+  await update($, level, () => room - 1)
+  const now = await $.clock.now()
+  const current = await read($, mood)
+  const isHome = (current === 'idle' || current === 'done') && !stageAt(await read($, voyage), now).aboard
+  await steerTrip($, undefined, isHome && room - 1 < (await read($, pantry)).stock)
+  return `Coconuts the context has room for: ${room - 1} of ${COCONUTS}`
+}
+
+// Shows a compaction's worth of room come back: the seaplane flies in and
+// throws down coconuts until the crate is full, as after a compaction.
+async function resupply($: EngineInterface): Promise<string> {
+  const now = await $.clock.now()
+  const last = await read($, plane)
+  if (last !== null && now < planeGone(last)) {
+    return 'The seaplane is still in sight. Try again once it has flown off.'
+  }
+  await update($, level, () => COCONUTS)
+  await update($, plane, () => ({ at: now, done: now }))
+  await steerTrip($)
+  return 'The seaplane is on its way with a full crate.'
+}
+
 async function goLive($: EngineInterface): Promise<string> {
   const real = await reset($)
   const what = real.mood === 'waiting' ? `waiting on ${await read($, need)}` : real.mood
@@ -346,20 +483,76 @@ function changedIn(before: string, after: string): string {
   return parts.length > 0 ? parts.join(', ') : 'refresh'
 }
 
+// Each new drawing kept for checking the scene the app was handed, when the
+// plugin's folder holds a `.record` file naming a directory: the last
+// FRAMES_KEPT drawings as frame-<slot>.svg, and frames.json saying when and
+// what drew each one. Looked for as the module loads; without that file
+// nothing is written. dev/verify/run.sh --app <directory> checks them.
+const FRAMES_KEPT = 20
+let recordTo: string | undefined
+let kept: Record<string, unknown>[] = []
+
+async function recordDir($: EngineInterface): Promise<string | undefined> {
+  try {
+    const marker = `${$.plugin.root}/.record`
+    if (!(await $.fs.exists(marker))) {
+      return undefined
+    }
+    const dir = (await $.fs.read(marker)).trim()
+    return dir === '' ? undefined : dir
+  } catch {
+    return undefined
+  }
+}
+
+async function record($: EngineInterface, scheme: string | undefined, changed: string): Promise<void> {
+  if (recordTo === undefined) {
+    return
+  }
+  const file = `frame-${String(tally.builds % FRAMES_KEPT).padStart(2, '0')}.svg`
+  const entry = {
+    n: tally.builds,
+    at: drawn.built,
+    file,
+    chars: drawn.source.length,
+    changed,
+    key: drawn.key,
+    scheme: scheme ?? 'auto',
+    mood: await read($, mood),
+    need: await read($, need),
+    voyage: await read($, voyage),
+    plane: await read($, plane),
+    pantry: await read($, pantry),
+    level: await read($, level),
+    liveLevel: await read($, liveLevel),
+    notes: recent.slice(-8),
+  }
+  kept = [...kept.filter(one => one.file !== file), entry].slice(-FRAMES_KEPT)
+  try {
+    await $.fs.write(`${recordTo}/${file}`, drawn.source)
+    await $.fs.write(`${recordTo}/frames.json`, JSON.stringify(kept, null, 1))
+  } catch (error) {
+    $.ui.log(`could not keep the drawing in ${recordTo}: ${String(error)}`)
+    recordTo = undefined
+  }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const unpainted = problems.find(line => line.startsWith("Desktop won't paint"))
     if (unpainted !== undefined) {
       $.ui.toast(unpainted)
     }
+    recordTo = await recordDir($)
     await applyLook($)
     const keptLang = await $.store.get('lang')
     await update($, shownLang, () => LANGS.find(([one]) => one === keptLang)?.[0] ?? 'en')
     $.ui.status(undefined)
+    await steerTrip($)
     await $.command.register({
       name: 'maldives',
       description:
-        'Show or hide the Control Panel above the prompt with panel, call up a swimmer, gulls or a dolphin leap with visit <kind>, preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), go back to what Claude is really doing with reset, set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, or print what the backdrop is showing with debug',
+        'Show or hide the Control Panel above the prompt with panel, call up a swimmer, gulls or a dolphin leap with visit <kind>, preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), use up a fifth of the room left in the context with drink, bring a full crate by seaplane as a compaction does with resupply, go back to what Claude is really doing with reset, set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, or print what the backdrop is showing with debug',
     })
     return next(e)
   })
@@ -377,8 +570,10 @@ export const register: Register = on => {
       const place = (at: { x: number; y: number } | null): string => (at === null ? 'none' : `${Math.round(at.x)},${Math.round(at.y)}`)
       const lines = [
         `mood ${await read($, mood)}, need ${await read($, need)}, boats ${(await read($, boats)).length}`,
-        `voyage ${trip.phase}, ${((now - trip.at) / 1000).toFixed(1)}s old, aboard ${trip.aboard}, boat ${place(trip.boat)}, clawd ${place(trip.clawd)}`,
-        `plan: boards ${plan.boards.toFixed(1)}, lands ${plan.lands.toFixed(1)}, settled ${plan.settled.toFixed(1)}, gone ${plan.gone.toFixed(1)}`,
+        `voyage ${trip.phase}${trip.wait === true ? ' (waiting for the seaplane)' : ''}, ${((now - trip.at) / 1000).toFixed(1)}s old, aboard ${trip.aboard}, boat ${place(trip.boat)}, clawd ${place(trip.clawd)}`,
+        `plan: boards ${plan.boards.toFixed(1)}, lands ${plan.lands.toFixed(1)}, settled ${plan.settled.toFixed(1)}, gone ${plan.gone.toFixed(1)}${plan.errand === undefined ? '' : `, by the boardwalk ${plan.errand.off.toFixed(1)}-${plan.errand.back.toFixed(1)}`}`,
+        `seaplane: ${seaplaneLine(await read($, plane), now)}`,
+        `coconuts: ${JSON.stringify(await read($, pantry))}, room for ${await read($, level)} (really ${await read($, liveLevel)}), compacts at ${compactsAt ?? 'unknown'} tokens`,
         `asked ${tally.asks} times, drawn ${tally.builds} times, last ${((now - drawn.built) / 1000).toFixed(1)}s ago, ${drawn.source.length} chars`,
         `key ${drawn.key}`,
         ...recent.map(a => `${((now - a.at) / 1000).toFixed(2)}s ago: ${a.what}`),
@@ -387,6 +582,12 @@ export const register: Register = on => {
     }
     if (arg === 'reset') {
       return { text: await goLive($) }
+    }
+    if (arg === 'drink') {
+      return { text: await drink($) }
+    }
+    if (arg === 'resupply') {
+      return { text: await resupply($) }
     }
     if (arg === 'fireworks') {
       await celebrate($)
@@ -417,7 +618,7 @@ export const register: Register = on => {
     }
     const pick = [...MOODS, ...NEEDS].find(m => m === arg)
     if (pick === undefined) {
-      return { text: `Usage: /maldives ${['panel', ...MOODS, ...NEEDS, 'reset', 'crew [0-5]', 'shells [0-5]', 'fireworks', `island ${DRILLS.join('|')}`, `visit ${KINDS.join('|')}`, ...SCHEMES].join(' | ')}` }
+      return { text: `Usage: /maldives ${['panel', ...MOODS, ...NEEDS, 'reset', 'crew [0-5]', 'shells [0-5]', 'drink', 'resupply', 'fireworks', `island ${DRILLS.join('|')}`, `visit ${KINDS.join('|')}`, ...SCHEMES].join(' | ')}` }
     }
     return { text: await preview($, pick) }
   })
@@ -431,7 +632,8 @@ export const register: Register = on => {
     }
     const { Box, Button, Text } = $.ui.resolve(e)
     const open = await read($, menu)
-    const w = words(await read($, shownLang))
+    const lang = await read($, shownLang)
+    const w = words(lang)
     // What a button does shows on the backdrop and in which button is lit, so
     // the words an action returns for `/maldives` are not shown here.
     const act = (run: () => Promise<unknown>) => async (): Promise<void> => {
@@ -489,22 +691,33 @@ export const register: Register = on => {
           <Text>{String(counts[which])}</Text>,
           <Button key={`${which}-more`} label="+" onPress={act(() => sendOut($, which, counts[which] + 1))} />,
         ])
-      rows.push(stepper('Dinghies', 'crew'), stepper('Fishing boats', 'shells'))
+      rows.push(stepper('Subagents', 'crew'), stepper('Background jobs', 'shells'))
     } else if (open === 'claude') {
       const current = await read($, mood)
       const kind = await read($, need)
       rows.push(
-        line('State', [
+        line('Claude state', [
           // Done differs from idle only in the wave Clawd gives as it lands, so
           // one button stands for both.
           ...(['idle', 'working', 'error'] as const).map(m => pick(`mood-${m}`, w(title(m)), m === current || (m === 'idle' && current === 'done'), () => preview($, m))),
-          pick('fireworks', w('Fireworks'), false, () => celebrate($)),
+          pick('fireworks', w('Fireworks (push/PR)'), false, () => celebrate($)),
         ]),
-        line('Waiting on', NEEDS.map(n => pick(`need-${n}`, w(title(n)), current === 'waiting' && n === kind, () => preview($, n)))),
+        line('Waiting for you', NEEDS.map(n => pick(`need-${n}`, w(NEED_LABEL[n]), current === 'waiting' && n === kind, () => preview($, n)))),
+      )
+      // How much room the context has, as coconuts in the crate: a fifth used
+      // up sends Clawd to drink one, and only the seaplane brings more, as a
+      // compaction does.
+      const room = await read($, level)
+      rows.push(
+        line('Context left', [
+          <Text>{`${room}/${COCONUTS}`}</Text>,
+          <Button key="coconuts-drink" label={w('Use 20%')} dimColor={room === 0} onPress={act(() => drink($))} />,
+          <Button key="coconuts-resupply" label={w('Compact')} onPress={act(() => resupply($))} />,
+        ]),
       )
       if (current === 'idle' || current === 'done') {
         const doing = (await read($, voyage)).drill
-        rows.push(line('On the island', DRILLS.map(d => pick(`drill-${d}`, w(PASTIME_LABEL[d]), d === doing, () => goAshore($, d)))))
+        rows.push(line('Idle pastime', DRILLS.map(d => pick(`drill-${d}`, w(PASTIME_LABEL[d]), d === doing, () => goAshore($, d)))))
       }
     }
     return (
@@ -589,20 +802,48 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // The main conversation compacted: the seaplane comes in while it is, the
+  // mascot waits for it on the boardwalk, and it leaves a full crate.
   on('session.compact', async ($, e, next) => {
-    if (e.trigger === 'precompute') {
+    if (e.trigger === 'precompute' || e.agentId !== undefined) {
       return next(e)
     }
-    await update($, compacting, () => true)
+    const calledAt = await $.clock.now()
+    await update($, plane, last => planeCalled(last ?? undefined, calledAt))
+    await steerTrip($)
+    let done: Awaited<ReturnType<typeof next>> | undefined
     try {
-      return await next(e)
+      done = await next(e)
+      return done
     } finally {
-      await update($, compacting, () => false)
+      // The window a compacted context is measured against is asked for anew
+      // at the next count.
+      compactsAt = undefined
+      if (done !== undefined && done.skip === undefined) {
+        refilled = true
+        await update($, level, () => COCONUTS)
+      }
+      const doneAt = await $.clock.now()
+      await update($, plane, called => (called === null ? null : { ...called, done: doneAt }))
+      await steerTrip($)
     }
+  })
+
+  // How full the context is, after each turn of the main conversation.
+  on('session.measure', async ($, e, next) => {
+    if (e.changed.includes('context')) {
+      await gauge($, e.context.tokens)
+    }
+    return next(e)
   })
 
   on('tool.call', async ($, e, next) => {
     const isMain = e.agentId === undefined
+    // Each step of a turn that calls a tool has just been answered over the
+    // context as it now stands.
+    if (isMain) {
+      await gauge($)
+    }
     if (isMain && (e.tool === 'AskUserQuestion' || e.tool === 'ExitPlanMode')) {
       await hold($, needOf(e.tool))
     }
@@ -635,6 +876,9 @@ export const register: Register = on => {
     await read($, leap)
     const now = await $.clock.now()
     flag = hoist(flag, signalOf(current, kind), now)
+    if (drawn.built === 0) {
+      drawn = { ...drawn, held: await read($, held) }
+    }
     const before = drawn.built
     const keyBefore = drawn.key
     drawn = paint(
@@ -642,7 +886,7 @@ export const register: Register = on => {
       {
         mood: current,
         need: kind,
-        isCompacting: await read($, compacting),
+        plane: (await read($, plane)) ?? undefined,
         firedAt: await read($, fireworks),
         scheme: e.props.overrideColorScheme,
         voyage: await read($, voyage),
@@ -650,11 +894,22 @@ export const register: Register = on => {
         leapUntil,
         flag,
         visits: await read($, visits),
+        pantry: await read($, pantry),
       },
       now,
     )
+    if (drawn.built !== before) {
+      // Kept from outside the drawing, which only reads state.
+      const kept = drawn.held
+      $.clock.after(0, async () => {
+        await update($, held, () => kept)
+      })
+    }
     tally = { asks: tally.asks + 1, builds: tally.builds + (drawn.built !== before ? 1 : 0) }
     await note($, drawn.built !== before ? `asked, drawn anew (${changedIn(keyBefore, drawn.key)})` : `asked, kept the drawing from ${((now - drawn.built) / 1000).toFixed(1)}s before`)
+    if (drawn.built !== before) {
+      await record($, e.props.overrideColorScheme, changedIn(keyBefore, drawn.key))
+    }
     return (
       <Svg
         source={drawn.source}

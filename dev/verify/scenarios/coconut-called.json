@@ -1,0 +1,6 @@
+{
+ "about": "The turn ends while Clawd is on the boardwalk at the crate: Clawd takes the coconut and hops back aboard first, and only then does the boat make for home",
+ "start": { "mood": "idle", "home": 300 },
+ "events": [[1, "prompt"], [1, "turn"], [30, "room 4"], [40.5, "answer"]],
+ "frames": { "from": 29, "to": 90, "every": 0.25 }
+}

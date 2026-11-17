@@ -31,8 +31,9 @@
   reef fish swims by the `.ox`/`.oy`/`.of` rules: without them the fish
   stand still, which no still and no layer check notices, so check them
   over time (`document.getAnimations()` or frames a few seconds apart). The open
-  lagoon (`LAGOON`) has slanting light shafts, five small coral heads on
-  the bottom further out and an eagle ray gliding by (lane 786).
+  lagoon (`LAGOON`) has five small coral heads on the bottom further out
+  and an eagle ray gliding by (lane 786); its slanting light shafts
+  (`BEAMS`) are painted over the swimmers, so they are seen in the water.
 - The lagoon and the reef (both ridges and their life) lie on the bottom,
   under every swimmer: the manta (712), shoal A (740), the eagle ray (786),
   the turtle (812) and shoal B (850) all pass over them. `seaLife(hasLife)`
@@ -40,7 +41,12 @@
 - Nothing that moves over the reef may let it show through: a swimmer is
   drawn opaque in colours already mixed with the water around it (the
   turtle's, the manta's and the shoals' classes), never with a group
-  opacity, which made fish crossing coral look like see-through ghosts. The
+  opacity, which made fish crossing coral look like see-through ghosts.
+  The shoals and the reef's own fish, octopus and stingray are mixed by
+  `inWater` with `WATER` as deep as they swim (`veilAt`: a quarter of the
+  water's colour near the lane tops, half near the bottom; the reef's life
+  at `REEF_VEIL`), so the deeper the hazier and no bright fish reads as
+  floating on the surface. The
   bright parts of the reef's life and the eagle ray keep their colour
   attributes by night too. (Darkening them for the night froze every
   animation in the app twice: an `feColorMatrix` filter, then class rules
@@ -54,7 +60,7 @@
   ray, about 6.3 KB. A busy fleet goes plain often, so plain must not drop
   anything visible, or the life blinks out and back on each redraw (the seam
   check flags it as a change on a redraw that changed nothing). Only every
-  boat out with fireworks, a whirlpool and a leap at once needs the third
+  boat out with fireworks, the seaplane and a leap at once needs the third
   tier (`npm run size`: busiest land 129152 without the life).
   `npm run fuzz` fails any scene past 131072 and prints the largest.
 - A reef piece that moves (seagrass, anemones) sways in a group of its own

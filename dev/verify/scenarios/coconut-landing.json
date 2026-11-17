@@ -1,0 +1,6 @@
+{
+ "about": "A turn ends as its last step uses up a fifth of the context: the boat bringing Clawd home goes by the boardwalk for a coconut first, then lands Clawd at the jetty",
+ "start": { "mood": "idle", "home": 300 },
+ "events": [[1, "prompt"], [1, "turn"], [30, "answer"], [30.5, "room 4"]],
+ "frames": { "from": 29, "to": 80, "every": 0.25 }
+}

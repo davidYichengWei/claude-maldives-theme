@@ -5,8 +5,11 @@
 - The boat comes in to the dock heading as it came; bow first, Clawd walks
   forward along the deck before hopping onto the jetty, so the boat need not
   turn.
-- Once Clawd is off the jetty the boat leaves by an edge, with a wake only
-  near the edge.
+- Once Clawd is off the jetty the boat leaves by an edge. On every leg of
+  a course its wake (`wakeOf`: two foam streaks off the stern and foam at
+  the bow, as the seaplane's) follows its speed across the view: none below
+  `WAKE_FROM` px a second, full at `WAKE_FULL`; on its circuit it roams too
+  slowly for one.
 - A rider in the middle of an antic (lean, glance, squat) or a pastime
   (fishing, spyglass, humming) finishes it and then rests. The run it plays
   out is a share of the 210 s loop, kept to four places: rounded to one, a

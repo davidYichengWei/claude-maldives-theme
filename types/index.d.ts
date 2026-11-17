@@ -16,7 +16,10 @@ declare module 'claude-code' {
       // What the agent is really doing, kept by its own events, for
       // `/maldives reset` to go back to.
       live: { mood: Mood; need: Need; crew: number; shells: number }
-      compacting: boolean
+      // The seaplane bringing a full crate while the context is compacted:
+      // called (clock ms), the compaction done, and its cargo swapped; null
+      // when none has been called.
+      plane: { at: number; done?: number; swap?: number; cargo?: number } | null
       // When the fireworks went up (clock ms), or 0 when none are going.
       fireworks: number
       leap: number
@@ -33,10 +36,22 @@ declare module 'claude-code' {
       // which place beside its lane each keeps while it is out.
       visits: { kind: 'snappers' | 'bannerfish' | 'turtle' | 'manta' | 'ray' | 'whaleShark' | 'fin' | 'dolphins' | 'gulls'; at: number; slot: number }[]
       // The lead boat's trip with the mascot, from the moment it began.
-      voyage: { phase: 'fetch' | 'land'; at: number; boat: Point | null; clawd: Point; aboard: boolean; greet: boolean; drill?: 'fish' | 'nap' | 'sun' | 'sip' | 'fire' | 'tour'; exit?: 'L' | 'R'; facing?: number; hop?: { a: Point; b: Point; p: number }; coast?: { to: Point; seconds: number } }
+      voyage: { phase: 'fetch' | 'land'; at: number; boat: Point | null; clawd: Point; aboard: boolean; greet: boolean; drill?: 'fish' | 'nap' | 'sun' | 'sip' | 'fire' | 'tour'; exit?: 'L' | 'R'; facing?: number; hop?: { a: Point; b: Point; p: number }; coast?: { to: Point; seconds: number }; errand?: { take: number; from: { stock: number } }; rise?: { bed: 'hammock' | 'lounger'; u: number }; wait?: boolean }
+      // The coconuts on the boardwalk as they will stand once the trip under
+      // way is done by it: in the crate, on the heap of empty ones, and
+      // whether the mascot holds one; and, filled again, when and from what.
+      pantry: { stock: number; filled?: { at: number; stock: number } }
+      // How many coconuts the room left in the context stands for (0 to 5),
+      // and the same as the agent's context really has it, for a preview to
+      // go back to.
+      level: number
+      liveLevel: number
       // The other boats on the water, with the times each set out and was
       // called home.
       boats: { kind: 'lead' | 'crew' | 'shell'; slot: number; from: 'L' | 'R'; pass: 'over' | 'under'; born: number; gone: number | undefined }[]
+      // The backdrop's content as last drawn (its key) and the tier it was
+      // drawn in.
+      held: { key: string; tier: number }
     }
   }
 }

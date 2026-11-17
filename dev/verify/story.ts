@@ -1,25 +1,19 @@
-// Plays scenarios: what happens to the agent and when, run through the
-// plugin's own rules for its state and for when the backdrop is drawn anew,
-// and writes every scene the app would be handed, with the moment it was
-// handed over, for film.cjs to render and check.
+// Plays scenarios: what happens to the agent and when, raised as the
+// engine's events through the plugin's own hooks module (hooks/register.tsx,
+// loaded by the fake engine in engine.ts), and writes every scene the app
+// would be handed, with the moment it was handed over, for film.cjs to render
+// and check.
 //
 //   node build/story.cjs <scenario.json> <out dir>
 //   node build/story.cjs --random <count> <seed> <out dir>
-//
-// The event handlers below follow hooks/register.tsx; the state rules
-// (embark, muster) and the redraw rule (paint) are the plugin's own code.
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
-import type { Mood, Need } from '../../types'
-import { berthAt, muster } from '../../hooks/fleet'
-import type { Boat } from '../../hooks/fleet'
-import { FIREWORKS_MS, UNFLAGGED, UNPAINTED, callUp, hoist, paint, signalOf } from '../../hooks/paint'
-import type { Call, Flag, Painted } from '../../hooks/paint'
+import type { Mood } from '../../types'
 import { VISIT_SECONDS } from '../../hooks/scene'
-import type { VisitKind } from '../../hooks/scene'
-import { AT_HOME, DRILLS, embark } from '../../hooks/voyage'
+import { AT_HOME, COCONUTS } from '../../hooks/voyage'
 import type { Voyage } from '../../hooks/voyage'
+import { COMPACTS_AT, FakeEngine } from './engine'
 
 export type Scenario = {
   about: string
@@ -31,215 +25,202 @@ export type Scenario = {
   // The app also asks for the backdrop this often, as it does when the window
   // is shown again; 0 for never.
   askEvery?: number
+  // [seconds, what must hold then]: `coconuts 4`, the crate holding four.
+  expect?: [number, string][]
   frames: { from: number; to: number; every: number }
 }
 
 const T0 = 1_800_000_000_000
-const LEAP_MS = 5000
-
-type World = {
-  mood: Mood
-  need: Need
-  crew: number
-  shells: number
-  // The agent's real state, kept by its events; a preview leaves it alone.
-  live: { mood: Mood; need: Need; crew: number; shells: number }
-  compacting: boolean
-  fireworks: number
-  voyage: Voyage
-  boats: Boat[]
-  scheme: 'light' | 'dark' | undefined
-  // The module's own variables: they start over when it reloads.
-  leapUntil: number
-  flag: Flag
-  visits: Call[]
-  drawn: Painted
-}
 
 // `cause` is the event the redraw answered: an `ask` or a `reload` changes
 // nothing the scene shows, so the picture must carry on across it unchanged.
-type Redraw = { at: number; file: string; size: number; cause: string; voyage: Voyage }
+type Redraw = { at: number; file: string; size: number; cause: string; voyage: Voyage; plane: unknown; pantry: unknown; level: unknown }
 
-function play(scenario: Scenario, out: string): void {
+// What comes next: an event of the scenario's, or a timer the plugin set.
+type Due = { at: number; seq: number; what: string | (() => Promise<void>) }
+
+// The context holding room for `coconuts`, in tokens.
+const tokensFor = (coconuts: number): number => Math.round(COMPACTS_AT * (1 - Math.max(0, Math.min(COCONUTS, coconuts)) / COCONUTS))
+
+async function play(scenario: Scenario, out: string): Promise<void> {
   mkdirSync(join(out, 'sources'), { recursive: true })
-  const world: World = {
-    mood: scenario.start?.mood ?? 'idle',
-    need: 'permission',
-    crew: 0,
-    shells: 0,
-    live: { mood: scenario.start?.mood ?? 'idle', need: 'permission', crew: 0, shells: 0 },
-    compacting: false,
-    fireworks: 0,
-    voyage: { ...AT_HOME, at: T0 - (scenario.start?.home ?? 600) * 1000 },
-    boats: [],
-    scheme: scenario.scheme,
-    leapUntil: 0,
-    flag: UNFLAGGED,
-    visits: [],
-    drawn: UNPAINTED,
+  const queue: Due[] = []
+  let seq = 0
+  const due = (at: number, what: Due['what']): void => {
+    queue.push({ at, seq: seq++, what })
   }
-  const redraws: Redraw[] = []
-  const log: string[] = []
-  const queue: [number, string][] = [...scenario.events]
+  const engine = new FakeEngine(T0, (at, run) => due((at - T0) / 1000, run))
+  const mood = scenario.start?.mood ?? 'idle'
+  engine.seed('mood', mood)
+  engine.seed('live', { mood, need: 'permission', crew: 0, shells: 0 })
+  engine.seed('voyage', { ...AT_HOME, at: T0 - (scenario.start?.home ?? 600) * 1000 })
+  if (scenario.scheme !== undefined) {
+    engine.remember('scheme', scenario.scheme)
+  }
+  for (const [at, what] of scenario.events) {
+    due(at, what)
+  }
+  for (const [at, what] of scenario.expect ?? []) {
+    if (at > scenario.frames.to) {
+      throw new Error(`"${what}" at ${at}s comes after the scenario ends at ${scenario.frames.to}s`)
+    }
+    due(at, `expect ${what}`)
+  }
   if ((scenario.askEvery ?? 0) > 0) {
     for (let t = scenario.askEvery ?? 0; t <= scenario.frames.to; t += scenario.askEvery ?? 1) {
-      queue.push([t, 'ask'])
+      due(t, 'ask')
     }
   }
-  queue.push([scenario.frames.from, 'ask'])
-  const at = (seconds: number): number => T0 + Math.round(seconds * 1000)
+  due(scenario.frames.from, 'ask')
 
-  const setMood = (next: Mood, now: number): void => {
-    const phase = next === 'idle' || next === 'done' ? 'land' : 'fetch'
-    if (world.voyage.phase !== phase) {
-      world.voyage = embark(world.voyage, phase, now, next === 'done')
-    }
-    world.mood = next
-  }
-  // The agent's own events set its real state and show it.
-  const feel = (next: Mood, now: number): void => {
-    world.live = { ...world.live, mood: next }
-    setMood(next, now)
-  }
-  const count = (kind: 'crew' | 'shells', change: (real: number) => number, now: number): void => {
-    const real = change(world.live[kind])
-    world.live = { ...world.live, [kind]: real }
-    world[kind] = real
-    recount(now)
-  }
-  const recount = (now: number): void => {
-    const wanted = { lead: 0, crew: world.crew, shell: world.shells }
-    world.boats = [...muster(world.boats, wanted, now)]
-    const when = berthAt(world.boats, wanted)
-    if (when !== undefined) {
-      queue.push([(when + 1 - T0) / 1000, 'berth'])
-    }
-  }
-  const celebrate = (seconds: number): void => {
-    world.fireworks = at(seconds)
-    queue.push([seconds + FIREWORKS_MS / 1000, `fireworks-out ${world.fireworks}`])
-  }
-  const ask = (now: number, seconds: number, cause: string): void => {
-    world.flag = hoist(world.flag, signalOf(world.mood, world.need), now)
-    const before = world.drawn
-    world.drawn = paint(
-      world.drawn,
-      {
-        mood: world.mood,
-        need: world.need,
-        isCompacting: world.compacting,
-        firedAt: world.fireworks,
-        scheme: world.scheme,
-        voyage: world.voyage,
-        boats: world.boats,
-        leapUntil: world.leapUntil,
-        flag: world.flag,
-        visits: world.visits,
-      },
-      now,
-    )
-    if (world.drawn !== before && world.drawn.built === now && world.drawn.source !== before.source) {
+  const redraws: Redraw[] = []
+  const log: string[] = []
+  const failed: string[] = []
+  let shown = ''
+  const ask = async (seconds: number, cause: string): Promise<void> => {
+    const source = await engine.backdrop()
+    if (source !== undefined && source !== shown) {
+      shown = source
       const file = `sources/${String(redraws.length).padStart(3, '0')}.svg`
-      writeFileSync(join(out, file), world.drawn.source)
-      redraws.push({ at: seconds, file, size: world.drawn.source.length, cause, voyage: world.voyage })
+      writeFileSync(join(out, file), source)
+      redraws.push({ at: seconds, file, size: source.length, cause, voyage: engine.read('voyage') as Voyage, plane: engine.read('plane'), pantry: engine.read('pantry'), level: engine.read('level') })
     }
   }
 
-  // One thing happening, as the plugin's hooks take it.
-  const happen = (seconds: number, what: string): void => {
-    const now = at(seconds)
+  // Tool calls held open (a dialog up, a question asked) and a compaction
+  // under way: each ends when the engine answers it.
+  const held: { settle: (result: Record<string, unknown>) => void; done: Promise<unknown> }[] = []
+  let compaction: { settle: (result: Record<string, unknown>) => void; done: Promise<unknown> } | undefined
+  const open = (event: string, e: Record<string, unknown>): { settle: (result: Record<string, unknown>) => void; done: Promise<unknown> } => {
+    let settle: (result: Record<string, unknown>) => void = () => undefined
+    const answer = new Promise<Record<string, unknown>>(resolve => {
+      settle = resolve
+    })
+    return { settle, done: engine.raise(event, e, async () => answer) }
+  }
+  const tool = (e: Record<string, unknown>): Promise<unknown> => engine.raise('tool.call', { agentId: undefined, ...e }, async () => ({}))
+  const settleHeld = async (result: Record<string, unknown>): Promise<void> => {
+    const calls = held.splice(0)
+    calls.forEach(call => call.settle(result))
+    await Promise.all(calls.map(call => call.done))
+  }
+  const turnEnds = async (reason: string): Promise<void> => {
+    await settleHeld({ isError: true })
+    await engine.raise('turn.complete', { agentId: undefined, reason })
+    const tasks = [...engine.subagents.map(() => ({ type: 'subagent' })), ...Array.from({ length: engine.shells }, () => ({ type: 'shell' }))]
+    await engine.raise('classic.Stop', { background_tasks: tasks })
+  }
+  const measure = async (tokens: number): Promise<void> => {
+    engine.context.measured(tokens)
+    await engine.raise('session.measure', { changed: ['context'], context: { tokens, window: 200_000 } })
+  }
+
+  // One thing happening, raised as the engine raises it.
+  const happen = async (what: string): Promise<void> => {
     const [word = '', arg] = what.split(/\s+/)
     if (word === 'turn') {
-      feel('working', now)
+      await engine.raise('turn.start', { agentId: undefined })
     } else if (word === 'answer' || word === 'abort' || word === 'fail') {
-      feel(word === 'answer' ? 'done' : word === 'abort' ? 'idle' : 'error', now)
+      await turnEnds(word === 'answer' ? 'answer' : word === 'abort' ? 'aborted' : 'error')
     } else if (word === 'prompt') {
-      world.leapUntil = now + LEAP_MS
-    } else if (word === 'permission' || word === 'question' || word === 'plan') {
-      world.live = { ...world.live, mood: 'waiting', need: word }
-      world.need = word
-      setMood('waiting', now)
+      await engine.raise('prompt.submit', { text: 'go on', isMeta: false })
+    } else if (word === 'permission') {
+      // The tool call waits on the dialog the engine puts to the person.
+      held.push(open('tool.call', { agentId: undefined, tool: 'Bash', command: 'make' }))
+      await engine.raise('classic.PermissionRequest', { tool_name: 'Bash' })
+    } else if (word === 'question' || word === 'plan') {
+      held.push(open('tool.call', { agentId: undefined, tool: word === 'question' ? 'AskUserQuestion' : 'ExitPlanMode' }))
     } else if (word === 'resolve') {
-      if (world.live.mood === 'waiting') {
-        feel('working', now)
+      await settleHeld({})
+    } else if (word === 'subagent') {
+      const id = `sub-${seq}`
+      engine.subagents.push(id)
+      await engine.raise('turn.start', { agentId: id })
+    } else if (word === 'subagent-done') {
+      const id = engine.subagents.shift()
+      if (id !== undefined) {
+        await engine.raise('turn.complete', { agentId: id, reason: 'answer' })
       }
-    } else if (word === 'subagent' || word === 'subagent-done') {
-      count('crew', n => Math.max(0, n + (word === 'subagent' ? 1 : -1)), now)
-    } else if (word === 'shell' || word === 'shell-done') {
-      count('shells', n => Math.max(0, n + (word === 'shell' ? 1 : -1)), now)
-    } else if (word === 'compact' || word === 'compacted') {
-      world.compacting = word === 'compact'
+    } else if (word === 'shell') {
+      engine.shells += 1
+      await tool({ tool: 'Bash', command: 'sleep 600', run_in_background: true })
+    } else if (word === 'shell-done') {
+      // The engine says so as the main turn next ends.
+      engine.shells = Math.max(0, engine.shells - 1)
     } else if (word === 'ship') {
-      celebrate(seconds)
-    } else if (word === 'berth') {
-      recount(now)
-    } else if (word === 'fireworks-out') {
-      if (world.fireworks === Number(arg)) {
-        world.fireworks = 0
+      await tool({ tool: 'Bash', command: 'git push' })
+    } else if (word === 'compact') {
+      // One compaction at a time.
+      if (compaction === undefined) {
+        compaction = open('session.compact', { trigger: 'manual', messages: [] })
       }
+    } else if (word === 'compacted') {
+      // `compacted 4`: the context compacted to room for four coconuts; bare,
+      // to as much room as it had.
+      const after = arg === undefined ? engine.context.usage().totalTokens : tokensFor(Number(arg))
+      if (compaction !== undefined) {
+        const tokensBefore = engine.context.usage().totalTokens
+        const tokensAfter = engine.context.compacting(after, Math.round(after / 3))
+        compaction.settle({ messages: [], tokensBefore, tokensAfter })
+        await compaction.done
+        compaction = undefined
+        engine.context.returned()
+      } else if (arg !== undefined) {
+        await measure(after)
+      }
+    } else if (word === 'room') {
+      // `room 3`: a turn measured the context with room for three coconuts.
+      await measure(tokensFor(Number(arg)))
     } else if (word === 'reload') {
-      world.leapUntil = 0
-      world.flag = UNFLAGGED
-      world.drawn = UNPAINTED
+      await engine.start()
     } else if (word === '/maldives') {
-      command(what.replace(/^\/maldives\s*/, ''), seconds, now)
+      const answer = (await engine.raise('command.run', { command: 'maldives', args: what.replace(/^\/maldives\s*/, '') }, async () => ({ text: '' }))) as { text?: string } | undefined
+      if (answer?.text?.startsWith('Usage') === true) {
+        throw new Error(`"${what}" is no /maldives command: ${answer.text}`)
+      }
+    } else if (word === 'expect') {
+      const [, kind, value] = what.split(/\s+/)
+      const crate = (engine.read('pantry') as { stock: number } | undefined)?.stock ?? COCONUTS
+      if (kind !== 'coconuts') {
+        throw new Error(`unknown expectation "${what}"`)
+      }
+      if (crate !== Number(value)) {
+        failed.push(`${(engine.now - T0) / 1000}s: the crate holds ${crate} coconuts, not ${value}`)
+      }
     } else if (word !== 'ask') {
-      throw new Error(`unknown event "${what}" at ${seconds}s`)
-    }
-    log.push(`${seconds}s ${what}`)
-    ask(now, seconds, what)
-  }
-
-  // The /maldives command, as register.tsx answers it.
-  const command = (args: string, seconds: number, now: number): void => {
-    const [word = '', amount] = args.split(/\s+/)
-    const count = amount !== undefined && /^[0-5]$/.test(amount) ? Number(amount) : undefined
-    if (word === 'reset') {
-      world.need = world.live.need
-      setMood(world.live.mood, now)
-      world.crew = world.live.crew
-      world.shells = world.live.shells
-      recount(now)
-    } else if (word === 'fireworks') {
-      celebrate(seconds)
-    } else if (word === 'island') {
-      const drill = DRILLS.find(one => one === amount)
-      if (drill !== undefined && world.mood !== 'working' && world.mood !== 'waiting') {
-        world.voyage = { ...embark(world.voyage, 'land', now, false), drill }
-      }
-    } else if (word === 'visit') {
-      const kind = (Object.keys(VISIT_SECONDS) as VisitKind[]).find(one => one === amount)
-      if (kind === undefined) {
-        throw new Error(`unknown kind "${amount}" at ${seconds}s`)
-      }
-      world.visits = callUp(world.visits, kind, now) ?? world.visits
-    } else if (word === 'shells' || word === 'crew') {
-      const next = count ?? ((word === 'shells' ? world.shells : world.crew) + 1) % 4
-      world[word === 'shells' ? 'shells' : 'crew'] = next
-      recount(now)
-    } else if (word === 'light' || word === 'dark' || word === 'auto') {
-      world.scheme = word === 'auto' ? undefined : word
-    } else if (word === 'permission' || word === 'question' || word === 'plan') {
-      world.need = word
-      setMood('waiting', now)
-    } else if (['idle', 'working', 'waiting', 'done', 'error'].includes(word)) {
-      setMood(word as Mood, now)
-    } else {
-      throw new Error(`unknown command "/maldives ${args}" at ${seconds}s`)
+      throw new Error(`unknown event "${what}"`)
     }
   }
 
-  // Events come in time order; fireworks going out are queued as they start.
+  // Lets every hook already under way run as far as it can before the app
+  // asks for the backdrop: a held call (a compaction, a dialog) goes on past
+  // its own `next` while the event that opened it has returned.
+  const settled = (): Promise<void> => new Promise(resolve => setImmediate(resolve))
+  await engine.start()
+  // Events and timers come in time order, each in the order it was set.
   for (;;) {
-    queue.sort((a, b) => a[0] - b[0])
+    queue.sort((a, b) => a.at - b.at || a.seq - b.seq)
     const next = queue.shift()
-    if (next === undefined || next[0] > scenario.frames.to) {
+    if (next === undefined || next.at > scenario.frames.to) {
       break
     }
-    happen(next[0], next[1])
+    engine.now = T0 + Math.round(next.at * 1000)
+    if (typeof next.what === 'string') {
+      await happen(next.what)
+      await settled()
+      log.push(`${next.at}s ${next.what}`)
+      await ask(next.at, next.what)
+    } else {
+      await next.what()
+      await settled()
+      await ask(next.at, 'timer')
+    }
   }
   writeFileSync(join(out, 'story.json'), JSON.stringify({ about: scenario.about, scheme: scenario.scheme ?? 'light', frames: scenario.frames, events: log, redraws }, null, 1))
   console.log(`${out}: ${redraws.length} redraws, largest ${Math.max(...redraws.map(r => r.size))} chars`)
+  if (failed.length > 0) {
+    throw new Error(`${out}: ${scenario.about}\n${failed.join('\n')}`)
+  }
 }
 
 // A scenario of random events: the combinations nobody thinks to try.
@@ -253,7 +234,7 @@ function randomScenario(seed: number): Scenario {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
   const pick = <T,>(items: readonly T[]): T => items[Math.floor(rand() * items.length)] as T
-  const vocabulary = ['turn', 'turn', 'answer', 'answer', 'abort', 'fail', 'prompt', 'permission', 'question', 'plan', 'resolve', 'resolve', 'subagent', 'subagent-done', 'shell', 'shell-done', 'compact', 'compacted', 'ship', 'ask', 'ask', 'reload', '/maldives island tour', '/maldives island nap', '/maldives island sun', '/maldives dark', '/maldives light', '/maldives crew 2', '/maldives shells 1', '/maldives crew 4', '/maldives reset', ...Object.keys(VISIT_SECONDS).map(kind => `/maldives visit ${kind}`)]
+  const vocabulary = ['turn', 'turn', 'answer', 'answer', 'abort', 'fail', 'prompt', 'permission', 'question', 'plan', 'resolve', 'resolve', 'subagent', 'subagent-done', 'shell', 'shell-done', 'compact', 'compacted', 'compacted 4', 'room 4', 'room 3', 'room 2', 'room 0', 'ship', 'ask', 'ask', 'reload', '/maldives island tour', '/maldives island nap', '/maldives island sun', '/maldives dark', '/maldives light', '/maldives crew 2', '/maldives shells 1', '/maldives crew 4', '/maldives drink', '/maldives resupply', '/maldives reset', ...Object.keys(VISIT_SECONDS).map(kind => `/maldives visit ${kind}`)]
   const events: [number, string][] = []
   let t = 1 + rand() * 4
   while (t < 85) {
@@ -264,20 +245,27 @@ function randomScenario(seed: number): Scenario {
   return { about: `random combination, seed ${seed}`, start: { mood: rand() < 0.7 ? 'idle' : 'working', home: 30 + rand() * 600 }, events, askEvery: 7, frames: { from: 0, to: 100, every: 0.25 } }
 }
 
-const argv = process.argv.slice(2)
-if (argv[0] === '--random') {
-  const [count = '10', seed = '1', out = 'out/random'] = argv.slice(1)
-  for (let i = 0; i < Number(count); i++) {
-    const scenario = randomScenario(Number(seed) * 1000 + i)
-    const dir = join(out, String(i).padStart(2, '0'))
-    mkdirSync(dir, { recursive: true })
-    writeFileSync(join(dir, 'scenario.json'), JSON.stringify(scenario, null, 1))
-    play(scenario, dir)
+async function main(): Promise<void> {
+  const argv = process.argv.slice(2)
+  if (argv[0] === '--random') {
+    const [count = '10', seed = '1', out = 'out/random'] = argv.slice(1)
+    for (let i = 0; i < Number(count); i++) {
+      const scenario = randomScenario(Number(seed) * 1000 + i)
+      const dir = join(out, String(i).padStart(2, '0'))
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, 'scenario.json'), JSON.stringify(scenario, null, 1))
+      await play(scenario, dir)
+    }
+  } else {
+    const [file, out] = argv
+    if (file === undefined || out === undefined) {
+      throw new Error('usage: story.cjs <scenario.json> <out dir> | --random <count> <seed> <out dir>')
+    }
+    await play(JSON.parse(readFileSync(file, 'utf8')) as Scenario, out)
   }
-} else {
-  const [file, out] = argv
-  if (file === undefined || out === undefined) {
-    throw new Error('usage: story.cjs <scenario.json> <out dir> | --random <count> <seed> <out dir>')
-  }
-  play(JSON.parse(readFileSync(file, 'utf8')) as Scenario, out)
 }
+
+main().catch(error => {
+  console.error(error)
+  process.exit(1)
+})

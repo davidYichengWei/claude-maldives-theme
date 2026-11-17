@@ -32,7 +32,7 @@ function trim(n: number): string {
 // How a keyframe's value runs on to the next one's.
 type Ease = { kind: 'smooth'; isLinear: boolean; at: (x: number) => number } | { kind: 'steps'; n: number }
 
-const NAMED: Readonly<Record<string, readonly [number, number, number, number]>> = {
+export const NAMED: Readonly<Record<string, readonly [number, number, number, number]>> = {
   ease: [0.25, 0.1, 0.25, 1],
   'ease-in': [0.42, 0, 1, 1],
   'ease-out': [0, 0, 0.58, 1],
@@ -423,6 +423,46 @@ const secondsOf = (t: string): number => parseFloat(t) / (t.endsWith('ms') ? 100
 
 const SHORTHAND = /((?:^|[{;"\s])animation:)([^;}"]*)/g
 
+// How far keyframes `body`, played with `timing`, stray once put on the
+// clock as `done`: the most any length in them is off, in px, half way
+// through any tick. A drawing on the clock and one with them as written (a
+// lean or plain drawing) take turns as the scene is redrawn, so a stray
+// shows as a jump at the redraw.
+export function strayOf(body: string, timing: string, done: OnClock): number {
+  const [written, ticked] = [easeOf(timing), easeOf(done.timing)]
+  const a = written === undefined ? undefined : tracksOf(body, written)
+  const b = ticked === undefined ? undefined : tracksOf(done.body, ticked)
+  if (a === undefined || b === undefined) return 0
+  let most = 0
+  for (const [prop, keys] of a) {
+    const other = b.get(prop) ?? []
+    for (let i = 0; i < done.ticks; i++) {
+      const x = (i + 0.5) / done.ticks
+      const [u, v] = [shape(valueAt(keys, x) ?? ''), shape(valueAt(other, x) ?? '')]
+      u.nums.forEach((n, m) => {
+        if (u.units[m] === 'px') most = Math.max(most, Math.abs(n - (v.nums[m] ?? n)))
+      })
+    }
+  }
+  return most
+}
+
+// Where `straysOf` collects each looping animation's stray while it puts a
+// scene on the clock.
+let strays: { name: string; px: number }[] | undefined
+
+// The stray of every looping animation a scene, as written, has once put on
+// the clock (`strayOf`).
+export function straysOf(source: string): { name: string; px: number }[] {
+  strays = []
+  try {
+    onClock(source)
+    return strays
+  } finally {
+    strays = undefined
+  }
+}
+
 // A finished scene, every animation in it on the clock; when `isLean`, but
 // for the trips (`way` and `cut` groups) and the runs whose stretches would
 // mostly each need a timing of their own (a creature's day): they keep their
@@ -447,6 +487,7 @@ export function onClock(source: string, isLean = false): string {
     const key = keyOf(seconds, timing, isOnce)
     if (!byKey.has(key)) {
       const done = onTicks(blocks.get(name) ?? '', seconds, timing, isOnce, isTrip)
+      if (strays !== undefined && done !== undefined && !isOnce) strays.push({ name, px: strayOf(blocks.get(name) ?? '', timing, done) })
       // Lean, a run whose stretches mostly each need a timing of their own
       // stays as written.
       const own = (done?.body.match(/animation-timing-function/g) ?? []).length

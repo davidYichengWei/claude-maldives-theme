@@ -1,0 +1,22 @@
+{
+ "about": "A /compact while Clawd is home: the boat fetches him off the island and takes him to the boardwalk; the compaction is over long before he gets there, so the plane waits for him, throws down a full crate, and leaves, and the boat takes him home again",
+ "start": {
+  "mood": "idle",
+  "home": 300
+ },
+ "events": [
+  [
+   2,
+   "compact"
+  ],
+  [
+   6,
+   "compacted 5"
+  ]
+ ],
+ "frames": {
+  "from": 0,
+  "to": 95,
+  "every": 0.25
+ }
+}

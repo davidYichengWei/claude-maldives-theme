@@ -143,17 +143,63 @@ A scenario is JSON:
   "start": { "mood": "working", "home": 600 },
   "scheme": "light",
   "events": [[0, "turn"], [30, "answer"]],
+  "expect": [[58, "coconuts 4"]],
   "askEvery": 7,
   "frames": { "from": 28, "to": 60, "every": 0.25 } }
 ```
 
+`story.ts` raises each event as the engine does, through the plugin's own
+`hooks/register.tsx`, loaded by the fake engine in `verify/engine.ts`; the
+plugin's timers run on the scenario's clock. So a change to a hook shows up
+here as it would in the app, and a call to an engine noun the fake does not
+answer throws, naming the file to answer it in. `expect` checks the plugin's
+state at a second (`coconuts N`: the crate holds N) and fails the run.
+
+What the fake engine reports around a compaction (usage stale inside the
+hook, the compacted count once it returns, no measure until the next turn)
+is recorded from a real session in `verify/engine-facts.ts`, which
+`test/engine-context.ts` replays for the plugin tests too. After an engine
+update, or when the plugin reads something new from the engine, record it
+again (three small model calls):
+
+```bash
+verify/engine-probe.sh
+```
+
 Events, at seconds from the start: `turn` `answer` `abort` `fail` `prompt`
 `permission` `question` `plan` `resolve` `subagent` `subagent-done` `shell`
-`shell-done` `compact` `compacted` `ship` `reload` `ask`, and any
-`/maldives …` command (`island nap`, `crew 2`, `dark`, …). `ask` is the app
-asking for the backdrop with nothing new; `askEvery` adds one every N seconds,
-which is what drives the 3-second stale refresh. `reload` forgets what was
-drawn, as a plugin reload does.
+`shell-done` `compact` (the seaplane is called) `compacted` `ship` `reload`
+`ask`, `room N` (a turn measured the context with room for N coconuts, 0
+to 5), `compacted N` (compacted to room for N; bare, to the room it had), and
+any `/maldives …` command (`island nap`, `crew 2`, `drink`, `resupply`,
+`dark`, …). `ask` is the app asking for the backdrop with nothing new;
+`askEvery` adds one every N seconds, which is what drives the 3-second stale
+refresh. `reload` loads the hooks module afresh, as a plugin reload does.
+`shell-done` reaches the plugin as the main turn next ends, as the engine
+tells it.
+
+### What the app was really handed
+
+The dev copy keeps every new drawing when its folder holds a `.record` file
+naming a directory (`hooks/register.tsx`): the last 20 as `frame-NN.svg` and
+`frames.json` with when, why and the state each was drawn from. When the
+person reports something odd in the app, film those instead of guessing:
+
+```bash
+verify/run.sh --app <that directory>
+```
+
+It prints each drawing with what it brought that the one before did not and
+any construct never seen working in the app, then films them.
+
+### The engine's own check
+
+The engine checks a backdrop's source before drawing it (what it may embed:
+no `href` but `href="#…"`, no `url()` but `url(#…)`, no data or base64, and
+more) and draws nothing of a scene it refuses, with no error in the app. The
+plugin tests mount the backdrop in every state through the engine, so
+`claude plugin test .` fails on such a scene. Run it with the engine the app
+runs too (`~/.claude/remote/ccd-cli/<version>`): the two can differ.
 
 To reproduce one random case on its own, copy its directory, narrow
 `frames` in `story.json`, and rerun `node verify/film.cjs <dir> --film --crop x,y,w,h`.
@@ -191,10 +237,9 @@ What the checks catch:
 
 What they miss: the app's own reload flicker and its crop of the backdrop; a
 narrow or mobile viewport; taste (a move that is smooth but ugly); arm and
-face changes too small to move Clawd's box; the `register.tsx` glue itself,
-which `verify/story.ts` mirrors line for line rather than runs (the plugin
-test kit has no `$.theme`). After changing an event handler in `register.tsx`,
-change `verify/story.ts` the same way.
+face changes too small to move Clawd's box; anything the app's own renderer
+does that Chromium does not (see the constructs above); and engine behaviour
+the fake engine does not model beyond `verify/engine-facts.ts`.
 
 Notes, not faults: when a new trip calls Clawd away from its island day, a
 glance, lean or squat it was in the middle of ends at once. That is accepted
@@ -240,7 +285,7 @@ The app reloads the mod when the session's turn ends.
   one moment that it is listed: an object with no shapes found is skipped
   without a word (a bare `<use>` and a class matched by prefix both were).
 - `npm run fuzz`: every pastime and trip interruption at many instants, in
-  every scheme with boats, flags, fireworks and compacting drawn at random,
+  every scheme with boats, flags, fireworks and the seaplane drawn at random,
   for scene build errors, timing, size past the app's limit and any
   construct not yet proven in the app; `bad 0` is clean. Run it before every
   sync to the live copy. It shares the trips over `FUZZ_JOBS` processes

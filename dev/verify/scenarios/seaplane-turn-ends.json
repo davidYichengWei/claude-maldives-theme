@@ -1,0 +1,40 @@
+{
+ "about": "The turn ends while Clawd waits for the seaplane: he stays on the walk until the compaction is done, the plane throws down a full crate, and the boat takes him home",
+ "start": {
+  "mood": "idle",
+  "home": 300
+ },
+ "events": [
+  [
+   1,
+   "prompt"
+  ],
+  [
+   1,
+   "turn"
+  ],
+  [
+   12,
+   "compact"
+  ],
+  [
+   22,
+   "answer"
+  ],
+  [
+   45,
+   "compacted 4"
+  ]
+ ],
+ "frames": {
+  "from": 8,
+  "to": 105,
+  "every": 0.25
+ },
+ "expect": [
+  [
+   100,
+   "coconuts 5"
+  ]
+ ]
+}

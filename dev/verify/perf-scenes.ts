@@ -19,7 +19,6 @@ const base: SceneState = {
   flag: { from: 'none', to: 'none', age: 99 },
   voyage: home,
   boats: [],
-  isCompacting: false,
   isLeaping: false,
   fireworks: undefined,
   scheme: 'light',

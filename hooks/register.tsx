@@ -115,6 +115,11 @@ const MENUS: readonly { menu: Menu; label: string }[] = [
 ]
 // The panel is shown from the start of a session, until it is closed.
 const controls = atom({ plugin: 'maldives', key: 'controls' } as const, true)
+// Whether the conversation is hidden on the surfaces that draw the backdrop,
+// to see the lagoon whole; the rows it hides, all but a question waiting on
+// the person.
+const chatHidden = atom({ plugin: 'maldives', key: 'chatHidden' } as const, false)
+const CHAT_ROWS = ['UserMessage', 'AssistantMessage', 'ToolUse', 'ToolResult', 'ToolGroup', 'CommandOutput', 'Spinner'] as const
 // The panels' opacity and the panel's language in force, kept from the store.
 const shownGlass = atom({ plugin: 'maldives', key: 'glass' } as const, GLASS)
 type Lang = 'en' | 'zh'
@@ -122,7 +127,7 @@ const LANGS: readonly [Lang, string][] = [['en', 'English'], ['zh', '中文']]
 const shownLang = atom({ plugin: 'maldives', key: 'lang' } as const, 'en' as Lang)
 // The panel's words in Chinese, by their English.
 const ZH: Readonly<Record<string, string>> = {
-  'Control Panel': '控制面板', Appearance: '外观', Boats: '船只', Clawd: 'Clawd', Wildlife: '野生动物', Reset: '重置', Close: '关闭',
+  'Control Panel': '控制面板', Appearance: '外观', Boats: '船只', Clawd: 'Clawd', Wildlife: '野生动物', Reset: '重置', Close: '关闭', 'Hide chat': '隐藏对话', 'Show chat': '显示对话',
   Scheme: '配色', Light: '浅色', Dark: '深色', Auto: '自动', Language: '语言', 'Panel opacity': '面板不透明度',
   Subagents: 'Subagent 小艇', 'Background jobs': '后台命令 渔船',
   'Claude state': 'Claude 状态', Idle: '空闲', Working: '工作中', Error: '出错', 'Fireworks (push/PR)': '烟花（push/PR）',
@@ -633,6 +638,7 @@ export const register: Register = on => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const open = await read($, menu)
     const lang = await read($, shownLang)
+    const isChatHidden = await read($, chatHidden)
     const w = words(lang)
     // What a button does shows on the backdrop and in which button is lit, so
     // the words an action returns for `/maldives` are not shown here.
@@ -728,6 +734,7 @@ export const register: Register = on => {
             ...MENUS.map(one => (
               <Button key={`menu-${one.menu}`} label={w(one.label)} variant={one.menu === open ? 'primary' : 'secondary'} onPress={() => update($, menu, was => (was === one.menu ? 'none' : one.menu))} />
             )),
+            pick('chat', w(isChatHidden ? 'Show chat' : 'Hide chat'), isChatHidden, () => update($, chatHidden, was => !was)),
             // Reset puts the panel back to its top row as well.
             <Button key="reset" label={w('Reset')} onPress={act(async () => {
               await goLive($)
@@ -743,6 +750,15 @@ export const register: Register = on => {
         {rows}
       </Box>
     )
+  })
+
+  // The conversation's rows, drawn empty while it is hidden.
+  on('ui.render', { component: CHAT_ROWS }, async ($, e, next) => {
+    if ((e.surface !== 'desktop' && e.surface !== 'mobile') || !(await read($, chatHidden))) {
+      return next(e)
+    }
+    const { Box } = $.ui.resolve(e)
+    return <Box />
   })
 
   // Sending a prompt sets the fish leaping. An idle session redraws as its turn

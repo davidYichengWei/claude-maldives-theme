@@ -31,6 +31,8 @@ declare module 'claude-code' {
       glass: number
       lang: 'en' | 'zh'
       controls: boolean
+      // Whether the conversation is hidden on the desktop and mobile apps.
+      chatHidden: boolean
       menu: 'none' | 'appearance' | 'boats' | 'claude' | 'wildlife'
       // Swimmers, gulls and dolphins called up by hand: when (clock ms), and
       // which place beside its lane each keeps while it is out.

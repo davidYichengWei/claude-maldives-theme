@@ -207,6 +207,29 @@ test('the panel speaks Chinese once chosen, every menu of it, and English again'
   await ui.unmount()
 })
 
+test('Hide chat leaves the desktop and mobile conversations empty, the terminal as it is, and Show chat brings them back', async ($, on) => {
+  const REPLY = { plugin: 'maldives', component: 'AssistantMessage', props: { text: 'The lagoon is calm today.', isFirstOfReply: true } } as const
+  // Shown, the row is the engine's own drawing; hidden, an empty box.
+  const shown = async (surface: 'desktop' | 'mobile' | 'terminal'): Promise<boolean> => {
+    const row = await $.ui.mount({ ...REPLY, surface })
+    const drawn = (await row.drawn()) as { type: string; children?: unknown[] }
+    await row.unmount()
+    if (drawn.type === 'Box' && (drawn.children ?? []).length === 0) return false
+    expect(drawn.type).toBe('engine')
+    return true
+  }
+  expect(await shown('desktop')).toBe(true)
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  await ui.press({ key: 'chat' })
+  expect(await isLit(ui, 'chat')).toBe(true)
+  expect((await ui.find({ key: 'chat' }))?.props.label).toBe('Show chat')
+  expect({ desktop: await shown('desktop'), mobile: await shown('mobile'), terminal: await shown('terminal') }).toEqual({ desktop: false, mobile: false, terminal: true })
+  await ui.press({ key: 'chat' })
+  expect((await ui.find({ key: 'chat' }))?.props.label).toBe('Hide chat')
+  expect(await shown('desktop')).toBe(true)
+  await ui.unmount()
+})
+
 test('a survey keeps the band', async ($, on) => {
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)

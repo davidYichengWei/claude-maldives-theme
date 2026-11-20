@@ -1,5 +1,7 @@
 # Maldives theme for Claude
 
+English | [中文](README.zh-CN.md)
+
 A living Maldives lagoon behind your conversations in the Claude desktop app. Whatever Claude is doing, you can see it on the water.
 
 https://github.com/user-attachments/assets/db042e09-37c8-41fc-bdda-ec96829b9b3e
@@ -90,12 +92,6 @@ claude plugin install maldives@claude-maldives-theme
 
 </details>
 
-## 中文说明
-
-给 Claude 桌面 App 用的马尔代夫主题：对话背后是一片会动的泻湖，Claude 在做什么，海面上都看得见。派活时飞鱼跃起，工作时 Clawd 乘帆船出海，每个 subagent 是一艘小艇，每个后台任务是一艘渔船；context 每用掉五分之一就少一个椰子，压缩时水上飞机送来一整箱；等你批准时船上挂旗，push 时放烟花，任务结束后 Clawd 回岛休息。
-
 ## License
 
 MIT
-</content>
-</invoke>

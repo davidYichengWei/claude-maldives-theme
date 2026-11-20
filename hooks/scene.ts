@@ -2490,7 +2490,10 @@ const TOSS_S = 0.7
 const SPLASH_S = 1.2
 // The keyframes every tossed shell plays from its own moment: its arc from
 // the hand into the sea, then the spray and the ring of foam where it lands.
-const TOSSED = `${arc('vks', { x: HAND_AT_CRATE.x - SPLASH.x, y: HAND_AT_CRATE.y - SPLASH.y }, { x: 0, y: 0 }, 0, TOSS_S, TOSS_S, 12)}${shownIn('vksv', [[0.05, TOSS_S]], TOSS_S, 0)}@keyframes vkss{0%{opacity:0;transform:scale(.3,.1)}12%{opacity:.9;transform:scale(1)}60%,100%{opacity:0;transform:scale(1.15,1.3)}}@keyframes vksr{0%{opacity:0;transform:scale(.4)}17%{opacity:.8;transform:scale(.7)}100%{opacity:0;transform:scale(2)}}`
+// The shell goes out of sight just before its arc ends, by a keyframe of its
+// own: left to the arc's last keyframe, the app held it on the water until
+// the scene was next drawn.
+const TOSSED = `${arc('vks', { x: HAND_AT_CRATE.x - SPLASH.x, y: HAND_AT_CRATE.y - SPLASH.y }, { x: 0, y: 0 }, 0, TOSS_S, TOSS_S, 12)}${shownIn('vksv', [[0.05, TOSS_S - 0.05]], TOSS_S, 0)}@keyframes vkss{0%{opacity:0;transform:scale(.3,.1)}12%{opacity:.9;transform:scale(1)}60%,100%{opacity:0;transform:scale(1.15,1.3)}}@keyframes vksr{0%{opacity:0;transform:scale(.4)}17%{opacity:.8;transform:scale(.7)}100%{opacity:0;transform:scale(2)}}`
 // And every coconut the seaplane throws: its arc from the door into the
 // mascot's hand, and in sight from then on.
 const THROWN = `${arc('vkd', { x: DOOR.x - HAND_AT_CRATE.x, y: DOOR.y - HAND_AT_CRATE.y }, { x: 0, y: 0 }, 0, SWAP.toss, SWAP.toss, 8)}${shownIn('vkdv', [[0.05, SWAP.toss]], SWAP.toss, 1)}`

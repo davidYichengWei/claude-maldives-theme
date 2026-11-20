@@ -159,8 +159,10 @@ async function applyLook($: EngineInterface): Promise<void> {
   const lit: ThemeSetArgs = { ...LOOK, backdrop: { scene: 'maldives', glass: { blur: 0, opacity: glass } } }
   const look: ThemeSetArgs = scheme === 'auto' ? lit : { ...lit, overrideColorScheme: scheme }
   const set = await $.theme.set(look)
+  // Often only that no surface has attached yet as the session starts, which
+  // it does a moment later: kept for /maldives debug, not put in the chat.
   if (!set.isDrawn) {
-    $.ui.log(`theme not drawn yet: ${set.reason}`)
+    await note($, `theme not drawn yet: ${set.reason}`)
   }
 }
 

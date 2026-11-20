@@ -2,9 +2,14 @@
 
 An animated Maldives lagoon behind your conversations in the Claude desktop app. The scene follows what Claude is doing, and Clawd, the little pixel mascot, lives in it.
 
+https://github.com/user-attachments/assets/db042e09-37c8-41fc-bdda-ec96829b9b3e
+
+
 | Day | Night |
 | --- | --- |
 | ![The lagoon by day](docs/day.jpg) | ![The lagoon at night](docs/night.jpg) |
+
+
 
 ## What it does
 

@@ -61,6 +61,7 @@ The **Control Panel** sits above the prompt from the start of a session; **Close
 | `reset` | Drop the previews and show what Claude is really doing: its state, the subagents and background shells it has running, and the room left in its context |
 | `panel` | Show or hide the Control Panel above the prompt (shown from the start of a session) |
 | `debug` | Print what the backdrop is showing and when it was last drawn |
+| `demo`, `demo stop` | Play a whole day on its own, about seven and a half minutes, for a screen recording. The chat and the Control Panel hide; Clawd fishes and sunbathes, sails out to work with dinghies and fishing boats, drinks two coconuts, meets the seaplane, waits on an approval, works on into the night, sets off fireworks and goes home to the fire pit, the bar and the hammock. The chat and the panel come back at the end; `demo stop` ends it early |
 
 ## Developing
 

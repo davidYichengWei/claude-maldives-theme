@@ -452,6 +452,122 @@ async function resupply($: EngineInterface): Promise<string> {
   return 'The seaplane is on its way with a full crate.'
 }
 
+// A day in Clawd's life, played back on its own for a screen recording: each
+// step is one of the panel's previews, at a second from the start. The chat
+// and the panel are hidden for the run, and shown again a little after it.
+type DemoAct =
+  | readonly ['morning']
+  | readonly ['visit', VisitKind]
+  | readonly ['leap']
+  | readonly ['state', Mood | Need]
+  | readonly ['crew' | 'shells', number]
+  | readonly ['drink']
+  | readonly ['resupply']
+  | readonly ['scheme', Scheme]
+  | readonly ['fireworks']
+  | readonly ['island', Drill]
+type DemoStep = readonly [at: number, what: string, act: DemoAct]
+const DEMO: readonly DemoStep[] = [
+  [0, 'morning: fishing off the jetty', ['morning']],
+  [4, 'a turtle', ['visit', 'turtle']],
+  [10, 'snappers', ['visit', 'snappers']],
+  [22, 'morning: the lounger', ['island', 'sun']],
+  [46, 'prompt sent: flying fish', ['leap']],
+  [47, 'working', ['state', 'working']],
+  [73, 'subagent 1', ['crew', 1]],
+  [76, 'subagent 2', ['crew', 2]],
+  [79, 'subagent 3', ['crew', 3]],
+  [88, 'background shell 1', ['shells', 1]],
+  [92, 'background shell 2', ['shells', 2]],
+  [108, 'context: a coconut', ['drink']],
+  [138, 'context: another coconut', ['drink']],
+  [168, 'compaction: the seaplane', ['resupply']],
+  [223, 'waiting on a tool approval', ['state', 'permission']],
+  [250, 'approved: back to work', ['state', 'working']],
+  [264, 'nightfall', ['scheme', 'dark']],
+  [278, 'subagents done', ['crew', 2]],
+  [281, 'subagents done', ['crew', 1]],
+  [284, 'subagents done', ['crew', 0]],
+  [290, 'shells done', ['shells', 1]],
+  [294, 'shells done', ['shells', 0]],
+  [308, 'pushed: fireworks', ['fireworks']],
+  [324, 'turn over: home to the island', ['state', 'idle']],
+  [352, 'the fire pit', ['island', 'fire']],
+  [384, 'a drink at the bar', ['island', 'sip']],
+  [414, 'the hammock', ['island', 'nap']],
+]
+const DEMO_END = 456
+let demoTimers: { cancel(): void }[] = []
+
+async function demoAct($: EngineInterface, act: DemoAct): Promise<void> {
+  switch (act[0]) {
+    case 'morning':
+      await preview($, 'idle')
+      await goAshore($, 'fish')
+      return
+    case 'visit':
+      await call($, act[1])
+      return
+    case 'leap':
+      await leapNow($)
+      return
+    case 'state':
+      await preview($, act[1])
+      return
+    case 'crew':
+    case 'shells':
+      await sendOut($, act[0], act[1])
+      return
+    case 'drink':
+      await drink($)
+      return
+    case 'resupply':
+      await resupply($)
+      return
+    case 'scheme':
+      await forceScheme($, act[1])
+      return
+    case 'fireworks':
+      await celebrate($)
+      return
+    case 'island':
+      await goAshore($, act[1])
+      return
+  }
+}
+
+async function demoStop(): Promise<number> {
+  const n = demoTimers.length
+  for (const timer of demoTimers) {
+    timer.cancel()
+  }
+  demoTimers = []
+  return n
+}
+
+async function demoStart($: EngineInterface): Promise<string> {
+  await demoStop()
+  await update($, chatHidden, () => true)
+  await update($, controls, () => false)
+  await update($, menu, () => 'none')
+  await forceScheme($, 'light')
+  await sendOut($, 'crew', 0)
+  await sendOut($, 'shells', 0)
+  await update($, level, () => COCONUTS)
+  for (const [at, what, act] of DEMO) {
+    demoTimers.push($.clock.after(at * 1000 + 1, async () => {
+      await note($, `demo ${at}s: ${what}`)
+      await demoAct($, act)
+    }))
+  }
+  demoTimers.push($.clock.after(DEMO_END * 1000, async () => {
+    demoTimers = []
+    await update($, controls, () => true)
+    await update($, chatHidden, () => false)
+  }))
+  return `Demo running: a day in ${DEMO.length} steps over ${DEMO_END}s. /maldives demo stop ends it.`
+}
+
 async function goLive($: EngineInterface): Promise<string> {
   const real = await reset($)
   const what = real.mood === 'waiting' ? `waiting on ${await read($, need)}` : real.mood
@@ -461,7 +577,10 @@ async function goLive($: EngineInterface): Promise<string> {
 async function celebrate($: EngineInterface): Promise<void> {
   const firedAt = await $.clock.now()
   await update($, fireworks, () => firedAt)
-  $.ui.toast('Shipped 🎆')
+  // A demo plays for a recording: no toast over its picture.
+  if (demoTimers.length === 0) {
+    $.ui.toast('Shipped 🎆')
+  }
   $.clock.after(FIREWORKS_MS, async () => {
     await update($, fireworks, at => (at === firedAt ? 0 : at))
   })
@@ -559,7 +678,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'maldives',
       description:
-        'Show or hide the Control Panel above the prompt with panel, call up a swimmer, gulls or a dolphin leap with visit <kind>, preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), use up a fifth of the room left in the context with drink, bring a full crate by seaplane as a compaction does with resupply, go back to what Claude is really doing with reset, set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, or print what the backdrop is showing with debug',
+        'Show or hide the Control Panel above the prompt with panel, call up a swimmer, gulls or a dolphin leap with visit <kind>, preview a state (idle | working | permission | question | plan | done | error | crew [0-5] | shells [0-5] | fireworks), use up a fifth of the room left in the context with drink, bring a full crate by seaplane as a compaction does with resupply, go back to what Claude is really doing with reset, set the mascot to a pastime on the island (island fish | nap | sun | sip | fire | tour), force light | dark | auto, print what the backdrop is showing with debug, or play a whole day on its own for a recording with demo (demo stop ends it)',
     })
     return next(e)
   })
@@ -586,6 +705,15 @@ export const register: Register = on => {
         ...recent.map(a => `${((now - a.at) / 1000).toFixed(2)}s ago: ${a.what}`),
       ]
       return { text: lines.join('\n') }
+    }
+    if (arg === 'demo') {
+      return { text: await demoStart($) }
+    }
+    if (arg === 'demo stop') {
+      const n = await demoStop()
+      await update($, controls, () => true)
+      await update($, chatHidden, () => false)
+      return { text: n === 0 ? 'No demo running.' : 'Demo stopped.' }
     }
     if (arg === 'reset') {
       return { text: await goLive($) }
